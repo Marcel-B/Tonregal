@@ -152,6 +152,23 @@ public sealed class MetadataClientTests : IDisposable
     }
 
     [Fact]
+    public async Task Suche_ueber_Tags_bevorzugt_das_Album_aus_den_Tags()
+    {
+        var musicBrainz = new StubHandler(_ => StubHandler.File("musicbrainz-search.json"));
+        var lookup = new MetadataLookup(AcoustId(new StubHandler(_ => throw new InvalidOperationException())), MusicBrainz(musicBrainz), _options, NullLogger<MetadataLookup>.Instance);
+
+        var candidates = await lookup.SearchByTagsAsync("Evanescence", "Bring \"Me\" to Life", "Fallen", 236_000, Ct);
+
+        // Der Treffer mit Score 40 fällt weg, die Live-Version liegt zeitlich daneben.
+        Assert.Equal(["Fallen", "Bring Me to Life", "Anywhere but Home"], candidates.Select(c => c.ReleaseTitle));
+        Assert.Equal((2, 11, 1.0), (candidates[0].TrackNumber, candidates[0].TrackCount, candidates[0].Score));
+        Assert.Null(candidates[0].AcoustId);
+        Assert.Equal(10, candidates[2].TrackNumber);
+        var uri = Uri.UnescapeDataString(musicBrainz.Requests.Single().Request.RequestUri!.Query);
+        Assert.Contains("recording:\"Bring \\\"Me\\\" to Life\" AND artist:\"Evanescence\"", uri);
+    }
+
+    [Fact]
     public async Task ReleaseTrack_mit_Disc_Track_Artists_und_IDs()
     {
         var musicBrainz = new StubHandler(_ => StubHandler.File("musicbrainz-release.json"));

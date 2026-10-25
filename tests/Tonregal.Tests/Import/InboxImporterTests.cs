@@ -321,6 +321,73 @@ public sealed class InboxImporterTests : IDisposable
     }
 
     [Theory]
+    [InlineData("Garbage - Use Me.mp3", null, null, "Use Me", "Garbage")]
+    [InlineData("Garbage - Use Me.mp3", "Titel 3", "Garbage", "Use Me", "Garbage")]
+    [InlineData("03 - Song.mp3", null, "Band", "Song", "Band")]
+    [InlineData("03 Song.mp3", null, "Band", "Song", "Band")]
+    [InlineData("13 x Forever.mp3", null, "Garbage", "13 x Forever", "Garbage")]
+    [InlineData("Teil 1 - Teil 2.mp3", null, "Band", "Teil 1 - Teil 2", "Band")]
+    [InlineData("Garbage - Use Me.mp3", "Echter Titel", "Garbage", "Echter Titel", "Garbage")]
+    [InlineData("Track 07.mp3", null, "Band", null, "Band")]
+    public void Titel_und_Artist_aus_dem_Dateinamen(string file, string? title, string? artist, string? expectedTitle, string? expectedArtist)
+    {
+        var tags = InboxImporter.WithFileName(new AudioTags { Title = title, Artists = artist is null ? [] : [artist] }, $"/inbox/{file}");
+
+        Assert.Equal(expectedTitle, tags.Title);
+        Assert.Equal(expectedArtist, tags.Artists.FirstOrDefault());
+    }
+
+    [Fact]
+    public void Etwas_niedrigerer_Score_reicht_wenn_die_Tags_passen()
+    {
+        var job = new ImportJob { SourcePath = "x.mp3", DurationMs = 2000 };
+        var tags = new AudioTags { Title = "Good Enough", Artists = ["Evanescence"] };
+
+        InboxImporter.Decide(job, tags, [Candidate("Good Enough", 0.85, artist: "Evanescence")], 0.9);
+        Assert.Equal(ImportState.Matched, job.State);
+
+        InboxImporter.Decide(job, tags, [Candidate("Something Else", 0.85, artist: "Evanescence")], 0.9);
+        Assert.Equal("Score 85 % unter 90 %", job.ReviewReason?.Replace(' ', ' '));
+    }
+
+    [Fact]
+    public void Treffer_fremder_Interpreten_zaehlen_nicht_wenn_der_Interpret_aus_den_Tags_dabei_ist()
+    {
+        var job = new ImportJob { SourcePath = "x.mp3", DurationMs = 2000 };
+
+        InboxImporter.Decide(job, new AudioTags { Title = "Thirteen", Artists = ["Garbage"] },
+            [Candidate("Thirteen", 1.0, artist: "Elliott Smith"), Candidate("Thirteen", 1.0, artist: "Garbage")], 0.9);
+        Assert.Equal(ImportState.Matched, job.State);
+
+        InboxImporter.Decide(job, new AudioTags { Artists = ["Evanescence"] },
+            [Candidate("Swingin' Shepherd Blues", 1.0, artist: "Deborah Henson-Conant"), Candidate("My Immortal (band version)", 1.0, artist: "Evanescence")], 0.9);
+        Assert.Equal(ImportState.Matched, job.State);
+    }
+
+    [Fact]
+    public async Task Ohne_AcoustID_Treffer_oder_Fingerprint_kommt_ein_Vorschlag_aus_den_Tags()
+    {
+        // song1.mp3: Testband – Erster Song
+        Drop("song1.mp3", "Album/01.mp3");
+        Drop("song1.mp3", "Album/kaputt.mp3");
+        File.AppendAllText(Path.Combine(Inbox, "Album", "kaputt.mp3"), "x");
+        var found = Candidate("Erster Song", 1.0);
+        _lookup.Search["Testband|Erster Song"] = [Candidate("Erster Song", 1.0, durationMs: 300_000), found];
+
+        var jobs = await ProcessAllAsync();
+
+        Assert.All(jobs, job =>
+        {
+            Assert.Equal(ImportState.NeedsReview, job.State);
+            Assert.Equal(found.RecordingId, job.SelectedRecordingId);
+            Assert.Null(job.MatchScore);
+            Assert.Null(job.Error);
+        });
+        Assert.Equal("AcoustID kennt diese Aufnahme nicht; Vorschlag nur über die Tags gefunden", jobs[0].ReviewReason);
+        Assert.Equal("Kein Fingerprint (fpcalc konnte die Datei nicht lesen); Vorschlag nur über die Tags gefunden", jobs[1].ReviewReason);
+    }
+
+    [Theory]
     [InlineData("A Victory Of Love", "A Victory of Love", true)]
     [InlineData("Forever Young (Remastered 2019)", "Forever Young", true)]
     [InlineData("Looking For The Summer", "Lookin' for the Summer", true)]
@@ -328,13 +395,18 @@ public sealed class InboxImporterTests : IDisposable
     [InlineData("Talking over me", "Taking Over Me", true)]
     [InlineData("Hello", "Hallo", false)]
     [InlineData("My Immortal", "My Last Breath", false)]
+    [InlineData("Breaking Up Girl", "Breaking Up the Girl", true)]
+    [InlineData("Punch And Judy", "Punch & Judy", true)]
+    [InlineData("13 x Forever", "13× Forever", true)]
     public void Titelvergleich(string a, string b, bool same) =>
         Assert.Equal(same, InboxImporter.SameTitle(a, b));
 
     private sealed class FakeFingerprints : IFingerprintService
     {
         public Task<Fingerprint> ComputeAsync(string path, CancellationToken ct) =>
-            Task.FromResult(new Fingerprint(Path.GetFileName(path), TimeSpan.FromSeconds(3)));
+            Path.GetFileName(path).Contains("kaputt")
+                ? throw new InvalidDataException("fpcalc konnte kaputt.mp3 nicht lesen: Empty fingerprint")
+                : Task.FromResult(new Fingerprint(Path.GetFileName(path), TimeSpan.FromSeconds(3)));
 
         public Task<string?> GetVersionAsync(CancellationToken ct) => Task.FromResult<string?>("fake");
     }
@@ -353,5 +425,11 @@ public sealed class InboxImporterTests : IDisposable
             throw new NotSupportedException();
 
         public Task<Guid?> GetReleaseGroupIdAsync(Guid releaseId, CancellationToken ct) => throw new NotSupportedException();
+
+        /// <summary>Suchergebnisse je „Artist|Titel“.</summary>
+        public Dictionary<string, IReadOnlyList<RecordingCandidate>> Search { get; } = [];
+
+        public Task<IReadOnlyList<RecordingCandidate>> SearchByTagsAsync(string artist, string title, string? album, int durationMs, CancellationToken ct) =>
+            Task.FromResult(Search.GetValueOrDefault($"{artist}|{title}") ?? []);
     }
 }

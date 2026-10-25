@@ -32,6 +32,14 @@ public interface IMetadataLookup
     /// <exception cref="ExternalToolUnavailableException">Kein API-Key oder Dienst nicht erreichbar.</exception>
     Task<IReadOnlyList<RecordingCandidate>> LookupAsync(Fingerprint fingerprint, CancellationToken ct);
 
+    /// <summary>
+    /// Kandidaten allein aus den Tags (MusicBrainz-Suche nach Titel und Artist), für Dateien ohne
+    /// brauchbaren Fingerprint. Releases mit passendem Albumtitel und passender Länge zuerst; der
+    /// Score ist der Such-Score von MusicBrainz, keine Audio-Übereinstimmung.
+    /// </summary>
+    /// <exception cref="ExternalToolUnavailableException">MusicBrainz nicht erreichbar.</exception>
+    Task<IReadOnlyList<RecordingCandidate>> SearchByTagsAsync(string artist, string title, string? album, int durationMs, CancellationToken ct);
+
     /// <summary>Vollständige Angaben zu einer Aufnahme auf einem Release; <c>null</c>, wenn sie dort nicht vorkommt.</summary>
     /// <exception cref="ExternalToolUnavailableException">MusicBrainz nicht erreichbar.</exception>
     Task<ReleaseTrack?> GetReleaseTrackAsync(Guid releaseId, Guid recordingId, CancellationToken ct);

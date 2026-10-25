@@ -1,0 +1,28 @@
+{
+  "created": "2026-10-25T23:40:00.000Z", "count": 3, "offset": 0,
+  "recordings": [
+    { "id": "dddddddd-0000-0000-0000-000000000001", "score": 100, "title": "Bring Me to Life", "length": 235000,
+      "artist-credit": [{ "name": "Evanescence", "artist": { "id": "eeeeeeee-0000-0000-0000-000000000001", "name": "Evanescence", "sort-name": "Evanescence" } }],
+      "releases": [
+        { "id": "aaaaaaaa-0000-0000-0000-0000000000b1", "title": "Bring Me to Life", "status": "Official", "date": "2003-04-07", "country": "GB",
+          "release-group": { "id": "bbbbbbbb-0000-0000-0000-0000000000b1", "primary-type": "Single" },
+          "media": [{ "position": 1, "format": "CD", "track-count": 3, "track-offset": 0,
+            "track": [{ "id": "cccccccc-0000-0000-0000-0000000000b1", "number": "1", "title": "Bring Me to Life", "length": 235000 }] }] },
+        { "id": "aaaaaaaa-0000-0000-0000-0000000000b2", "title": "Fallen", "status": "Official", "date": "2003-03-04", "country": "US",
+          "release-group": { "id": "bbbbbbbb-0000-0000-0000-0000000000b2", "primary-type": "Album" },
+          "media": [{ "position": 1, "format": "CD", "track-count": 11, "track-offset": 1,
+            "track": [{ "id": "cccccccc-0000-0000-0000-0000000000b2", "number": "2", "title": "Bring Me to Life", "length": 237000 }] }] }
+      ] },
+    { "id": "dddddddd-0000-0000-0000-000000000002", "score": 92, "title": "Bring Me to Life (live)", "length": 283000,
+      "artist-credit": [{ "name": "Evanescence", "artist": { "id": "eeeeeeee-0000-0000-0000-000000000001", "name": "Evanescence", "sort-name": "Evanescence" } }],
+      "releases": [
+        { "id": "aaaaaaaa-0000-0000-0000-0000000000b3", "title": "Anywhere but Home", "status": "Official", "date": "2004-11-23", "country": "US",
+          "release-group": { "id": "bbbbbbbb-0000-0000-0000-0000000000b3", "primary-type": "Album", "secondary-types": ["Live"] },
+          "media": [{ "position": 1, "format": "CD", "track-count": 14, "track-offset": 9,
+            "track": [{ "id": "cccccccc-0000-0000-0000-0000000000b3", "number": "10", "title": "Bring Me to Life", "length": 283000 }] }] }
+      ] },
+    { "id": "dddddddd-0000-0000-0000-000000000003", "score": 40, "title": "Bring Me Some Water", "length": 200000,
+      "artist-credit": [{ "name": "Melissa Etheridge", "artist": { "id": "eeeeeeee-0000-0000-0000-000000000002", "name": "Melissa Etheridge", "sort-name": "Etheridge, Melissa" } }],
+      "releases": [] }
+  ]
+}

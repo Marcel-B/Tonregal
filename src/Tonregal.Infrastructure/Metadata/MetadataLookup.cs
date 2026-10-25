@@ -45,7 +45,7 @@ public sealed class MetadataLookup(
                     continue;
                 }
 
-                candidates.AddRange(ToCandidates(match, recording));
+                candidates.AddRange(ToCandidates(match.AcoustId, match.Score, recording));
             }
         }
 
@@ -61,12 +61,37 @@ public sealed class MetadataLookup(
             .ToList();
     }
 
-    private static IEnumerable<(RecordingCandidate, int, string)> ToCandidates(AcoustIdMatch match, MbRecording recording)
+    /// <summary>Unter diesem Such-Score (0–100) ist ein MusicBrainz-Suchtreffer meist ein anderer Song.</summary>
+    private const int MinimumSearchScore = 80;
+    private const int MaxSearchCandidates = 30;
+
+    public async Task<IReadOnlyList<RecordingCandidate>> SearchByTagsAsync(
+        string artist, string title, string? album, int durationMs, CancellationToken ct)
+    {
+        var recordings = await musicBrainz.SearchRecordingsAsync(artist, title, ct);
+        var seenReleases = new HashSet<Guid>();
+        return recordings
+            .Where(r => r.Score >= MinimumSearchScore)
+            .SelectMany(r => ToCandidates(null, r.Score / 100.0, r.ToRecording(), album))
+            .OrderByDescending(c => album is not null && c.Candidate.ReleaseTitle is { } t && Import.InboxImporter.SameTitle(t, album))
+            .ThenBy(c => durationMs <= 0 || c.Candidate.DurationMs is not { } length ? 1 : Math.Abs(length - durationMs) <= 15_000 ? 0 : 2)
+            .ThenByDescending(c => c.Candidate.Score)
+            .ThenBy(c => c.Rank)
+            .ThenBy(c => c.Date, StringComparer.Ordinal)
+            .Select(c => c.Candidate)
+            .Where(c => c.ReleaseId is not { } releaseId || seenReleases.Add(releaseId))
+            .Take(MaxSearchCandidates)
+            .ToList();
+    }
+
+    private static IEnumerable<(RecordingCandidate Candidate, int Rank, string Date)> ToCandidates(
+        Guid? acoustId, double score, MbRecording recording, string? album = null)
     {
         var artists = (recording.ArtistCredit ?? []).Select(c => c.Artist.Name).ToList();
         var releases = (recording.Releases ?? [])
             .Select(r => (Release: r, Rank: Rank(r)))
-            .OrderBy(r => r.Rank)
+            .OrderByDescending(r => album is not null && Import.InboxImporter.SameTitle(r.Release.Title, album))
+            .ThenBy(r => r.Rank)
             .ThenBy(r => r.Release.Date ?? "9999", StringComparer.Ordinal)
             .Take(MaxReleasesPerRecording)
             .ToList();
@@ -74,8 +99,8 @@ public sealed class MetadataLookup(
         if (releases.Count == 0)
         {
             yield return (new RecordingCandidate(
-                recording.Id, match.AcoustId, recording.Title, artists, recording.Length,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, match.Score), int.MaxValue, "9999");
+                recording.Id, acoustId, recording.Title, artists, recording.Length,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, score), int.MaxValue, "9999");
             yield break;
         }
 
@@ -85,11 +110,11 @@ public sealed class MetadataLookup(
             var medium = release.Media?.FirstOrDefault(m => m.Tracks is { Count: > 0 });
             var track = medium?.Tracks?[0];
             yield return (new RecordingCandidate(
-                recording.Id, match.AcoustId, recording.Title, artists, recording.Length,
+                recording.Id, acoustId, recording.Title, artists, recording.Length,
                 release.Id, release.ReleaseGroup?.Id, release.Title, release.ArtistCredit.Format(),
                 release.ReleaseGroup?.PrimaryType, release.Status, release.Year,
                 medium?.Position, track?.Position, medium?.TrackCount,
-                release.Date, release.Country, medium?.Format, match.Score), rank, release.Date ?? "9999");
+                release.Date, release.Country, medium?.Format, score), rank, release.Date ?? "9999");
         }
     }
 

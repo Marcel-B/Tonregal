@@ -175,6 +175,9 @@ public sealed class LibraryImporterTests : IDisposable
             Task.FromResult<ReleaseTrack?>(track());
 
         public Task<Guid?> GetReleaseGroupIdAsync(Guid releaseId, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<RecordingCandidate>> SearchByTagsAsync(string artist, string title, string? album, int durationMs, CancellationToken ct) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeCovers : ICoverArtSource
