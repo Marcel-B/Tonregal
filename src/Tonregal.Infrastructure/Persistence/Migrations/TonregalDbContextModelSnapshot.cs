@@ -285,6 +285,9 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.Property<string>("Candidates")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Error")
                         .HasColumnType("TEXT");
 
@@ -292,11 +295,39 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("FileHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fingerprint")
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("FinishedAt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<double?>("MatchScore")
                         .HasColumnType("REAL");
+
+                    b.Property<long>("ModifiedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ReviewReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SelectedRecordingId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SelectedReleaseId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -314,6 +345,18 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TagAlbum")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TagArtist")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TagTitle")
+                        .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

@@ -17,6 +17,9 @@ public sealed class TonregalOptions
     /// <summary>Datei, deren Existenz anzeigt, dass die SSD gemountet ist.</summary>
     public string MountMarkerFile { get; set; } = ".tonregal-mount";
 
+    /// <summary>So lange muss die Größe einer Inbox-Datei unverändert sein, bevor sie eingelesen wird.</summary>
+    public int InboxStableSeconds { get; set; } = 10;
+
     public string Inbox => Resolve(InboxPath, "Inbox");
     public string Library => Resolve(LibraryPath, "Library");
     public string Database => Resolve(DatabasePath, Path.Combine("app", "tonregal.db"));

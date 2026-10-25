@@ -8,6 +8,7 @@ using Tonregal.Infrastructure;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Api;
 using Tonregal.Web.Hubs;
+using Tonregal.Web.Inbox;
 using Tonregal.Web.Library;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,6 +29,8 @@ builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Ad
 builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddSingleton<LibraryScanService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LibraryScanService>());
+builder.Services.AddSingleton<InboxService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<InboxService>());
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
@@ -57,7 +60,7 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi();
+app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi();
 app.MapHub<StatusHub>("/hub");
 app.MapFallbackToFile("index.html");
 

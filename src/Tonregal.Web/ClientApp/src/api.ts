@@ -121,6 +121,47 @@ export interface MatchResponse {
   candidates: RecordingCandidate[]
 }
 
+export type ImportState = 'New' | 'Fingerprinted' | 'Matched' | 'NeedsReview' | 'Imported' | 'Rejected'
+
+export interface ImportJob {
+  id: number
+  path: string
+  group: string
+  state: ImportState
+  format: AudioFormat
+  durationMs: number
+  tagTitle: string | null
+  tagArtist: string | null
+  tagAlbum: string | null
+  matchScore: number | null
+  reviewReason: string | null
+  error: string | null
+  selected: RecordingCandidate | null
+  candidateCount: number
+  startedAt: string
+}
+
+export interface InboxStatus {
+  running: boolean
+  currentPath: string | null
+  processed: number
+  waiting: number
+  lastRunAt: string | null
+  lastError: string | null
+}
+
+export interface InboxResponse {
+  status: InboxStatus
+  jobs: ImportJob[]
+}
+
+export interface ImportJobCandidates {
+  jobId: number
+  selectedRecordingId: string | null
+  selectedReleaseId: string | null
+  candidates: RecordingCandidate[]
+}
+
 export interface ToolStatus {
   fpcalc: string | null
   acoustIdConfigured: boolean
@@ -149,6 +190,10 @@ export const api = {
   startScan: () => request<ScanStatus>('POST', '/library/scan'),
   tools: () => get<ToolStatus>('/tools'),
   candidates: (fileId: number) => get<MatchResponse>(`/library/files/${fileId}/candidates`),
+  inbox: () => get<InboxResponse>('/inbox'),
+  scanInbox: () => request<InboxStatus>('POST', '/inbox/scan'),
+  importCandidates: (jobId: number) => get<ImportJobCandidates>(`/inbox/${jobId}/candidates`),
+  retryImport: (jobId: number) => request<ImportJob>('POST', `/inbox/${jobId}/retry`),
 }
 
 export function formatDuration(ms: number): string {

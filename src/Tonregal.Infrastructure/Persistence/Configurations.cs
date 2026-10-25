@@ -64,6 +64,12 @@ internal sealed class ImportJobConfiguration : IEntityTypeConfiguration<ImportJo
     {
         b.Property(x => x.SourcePath).HasMaxLength(1024).IsRequired();
         b.Property(x => x.ExternalId).HasMaxLength(256);
+        b.Property(x => x.FileHash).HasMaxLength(64);
+        b.Property(x => x.TagTitle).HasMaxLength(512);
+        b.Property(x => x.TagArtist).HasMaxLength(512);
+        b.Property(x => x.TagAlbum).HasMaxLength(512);
+        b.Property(x => x.ReviewReason).HasMaxLength(512);
+        b.Ignore(x => x.Group);
         b.HasOne(x => x.AudioFile).WithMany()
             .HasForeignKey(x => x.AudioFileId).OnDelete(DeleteBehavior.SetNull);
         b.HasIndex(x => x.State);

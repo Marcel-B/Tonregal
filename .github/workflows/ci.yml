@@ -10,17 +10,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: global.json
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: src/Tonregal.Web/ClientApp/package-lock.json
 
-      - name: Chromaprint (fpcalc) für die Fingerprint-Tests
-        run: sudo apt-get update && sudo apt-get install -y libchromaprint-tools
+      # .NET aus dem Ubuntu-Archiv statt per setup-dotnet: dessen Download von Microsofts CDN
+      # (dotnetorigin.blob.core.windows.net) liefert zeitweise 409. global.json erlaubt jedes 10.0-SDK.
+      - name: .NET SDK und Chromaprint (fpcalc) für die Fingerprint-Tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dotnet-sdk-10.0 libchromaprint-tools
+          dotnet --version
 
       - name: Client bauen und testen
         working-directory: src/Tonregal.Web/ClientApp

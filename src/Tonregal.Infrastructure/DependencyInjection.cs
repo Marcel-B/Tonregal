@@ -7,6 +7,7 @@ using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Infrastructure.Fingerprinting;
 using Tonregal.Infrastructure.Library;
+using Tonregal.Infrastructure.Import;
 using Tonregal.Infrastructure.Metadata;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Infrastructure.Tagging;
@@ -29,6 +30,8 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<ITagReader, TagLibTagReader>();
         services.AddScoped<ILibraryScanner, LibraryScanner>();
+        services.AddSingleton<InboxFileTracker>();
+        services.AddScoped<IInboxImporter, InboxImporter>();
         services.AddMetadataServices(configuration);
         return services;
     }
