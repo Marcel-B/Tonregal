@@ -129,7 +129,7 @@ public sealed class InboxImporterTests : IDisposable
     [Theory]
     [InlineData("niedrig", "Score 72 % unter 90 %")]
     [InlineData("leer", "AcoustID kennt diese Aufnahme nicht")]
-    [InlineData("mehrdeutig", "Fingerprint passt zu mehreren verschiedenen Aufnahmen")]
+    [InlineData("mehrdeutig", "Fingerprint passt auch zu „Ganz anderer Song“ von Testband")]
     [InlineData("titel", "Titel in den Tags weicht ab: „Erster Song“")]
     [InlineData("mbid", "MusicBrainz-ID in den Tags passt nicht zum Fingerprint")]
     public async Task Unsicherer_Treffer_braucht_Review(string fall, string reason)
@@ -152,6 +152,23 @@ public sealed class InboxImporterTests : IDisposable
         Assert.Equal(reason, job.ReviewReason?.Replace(' ', ' '));
         if (fall != "leer")
             Assert.NotNull(job.SelectedRecordingId);
+    }
+
+    [Fact]
+    public async Task Andere_Fassung_derselben_Aufnahme_ist_kein_Widerspruch()
+    {
+        Drop("song1.mp3", "01.mp3");
+        _lookup.Results["01.mp3"] =
+        [
+            Candidate("Erster Song", 0.98, ReleaseA),
+            Candidate("Erster Song (single edit)", 0.97, ReleaseB),
+            Candidate("Erster Song", 0.96, ReleaseC, artist: "Testband & Gast"),
+        ];
+
+        var job = Assert.Single(await ProcessAllAsync());
+
+        Assert.Equal(ImportState.Matched, job.State);
+        Assert.Equal(ReleaseA, job.SelectedReleaseId);
     }
 
     [Fact]

@@ -222,8 +222,8 @@ public sealed class InboxImporter(
     {
         if (bestScore < autoMatchScore)
             return $"Score {bestScore:P0} unter {autoMatchScore:P0}";
-        if (good.Select(SongKey).Distinct().Count() > 1)
-            return "Fingerprint passt zu mehreren verschiedenen Aufnahmen";
+        if (good.FirstOrDefault(c => !SameSong(c, selected)) is { } other)
+            return $"Fingerprint passt auch zu „{other.Title}“ von {string.Join(", ", other.Artists)}";
         if (tags.MusicBrainzRecordingId is { } recording && good.All(c => c.RecordingId != recording))
             return "MusicBrainz-ID in den Tags passt nicht zum Fingerprint";
         if (tags.Title is { } title && !SameTitle(title, selected.Title))
@@ -296,8 +296,13 @@ public sealed class InboxImporter(
         logger.LogInformation("Inbox: {Path}: {Reason}", job.SourcePath, reason);
     }
 
-    private static string SongKey(RecordingCandidate c) =>
-        $"{TrackKey.Normalize(c.Artists.FirstOrDefault() ?? "")}|{TrackKey.Normalize(c.Title)}";
+    /// <summary>
+    /// Dieselbe Aufnahme in anderer Fassung („Auberge (single edit)“) oder mit anderem Credit
+    /// („Chris Rea & Band“) zählt nicht als Widerspruch.
+    /// </summary>
+    private static bool SameSong(RecordingCandidate a, RecordingCandidate b) =>
+        SameTitle(a.Title, b.Title)
+        && (a.Artists.Count == 0 || b.Artists.Count == 0 || SameTitle(a.Artists[0], b.Artists[0]));
 
     /// <summary>Gleich nach Normalisierung, oder einer enthält den anderen („Song (Remastered 2011)“).</summary>
     internal static bool SameTitle(string a, string b)
