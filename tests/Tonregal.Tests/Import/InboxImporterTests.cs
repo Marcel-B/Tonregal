@@ -308,5 +308,8 @@ public sealed class InboxImporterTests : IDisposable
             Unavailable
                 ? throw new ExternalToolUnavailableException("AcoustID-API-Key fehlt")
                 : Task.FromResult(Results.GetValueOrDefault(fingerprint.Value) ?? []);
+
+        public Task<ReleaseTrack?> GetReleaseTrackAsync(Guid releaseId, Guid recordingId, CancellationToken ct) =>
+            throw new NotSupportedException();
     }
 }

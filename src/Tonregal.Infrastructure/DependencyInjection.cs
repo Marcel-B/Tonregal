@@ -29,9 +29,11 @@ public static class DependencyInjection
                 ?? $"Data Source={sp.GetRequiredService<IOptions<TonregalOptions>>().Value.Database}"));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<ITagReader, TagLibTagReader>();
+        services.AddSingleton<ITagWriter, TagLibTagWriter>();
         services.AddScoped<ILibraryScanner, LibraryScanner>();
         services.AddSingleton<InboxFileTracker>();
         services.AddScoped<IInboxImporter, InboxImporter>();
+        services.AddScoped<ILibraryImporter, LibraryImporter>();
         services.AddMetadataServices(configuration);
         return services;
     }

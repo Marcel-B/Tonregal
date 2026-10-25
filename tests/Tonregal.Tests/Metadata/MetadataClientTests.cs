@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
+using Tonregal.Domain.Entities;
 using Tonregal.Domain.ValueObjects;
 using Tonregal.Infrastructure.Metadata;
 using Tonregal.Infrastructure.Persistence;
@@ -148,6 +149,28 @@ public sealed class MetadataClientTests : IDisposable
 
         Assert.Equal(2, musicBrainz.Requests.Count);
         Assert.Equal(["Testalbum", "Zweiter Song", "Best of Testband"], candidates.Select(c => c.ReleaseTitle));
+    }
+
+    [Fact]
+    public async Task ReleaseTrack_mit_Disc_Track_Artists_und_IDs()
+    {
+        var musicBrainz = new StubHandler(_ => StubHandler.File("musicbrainz-release.json"));
+        var lookup = new MetadataLookup(AcoustId(new StubHandler(_ => throw new InvalidOperationException())), MusicBrainz(musicBrainz), _options, NullLogger<MetadataLookup>.Instance);
+        var release = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
+
+        var track = await lookup.GetReleaseTrackAsync(release, RecordingId, Ct);
+        var missing = await lookup.GetReleaseTrackAsync(release, Guid.NewGuid(), Ct);
+
+        Assert.NotNull(track);
+        Assert.Null(missing);
+        Assert.Equal(("Zweiter Song (Live)", "Testalbum (Deluxe)", "Testband"), (track.Title, track.Album, track.AlbumArtist));
+        Assert.Equal(["Testband", "Gast"], track.Artists);
+        Assert.Equal((2, 2, 1, 1), (track.Disc, track.DiscCount, track.Track, track.TrackCount));
+        Assert.Equal((AlbumKind.Album, "album", "official", "XE", 2024), (track.Kind, track.ReleaseType, track.ReleaseStatus, track.Country, track.Year));
+        Assert.Equal(Guid.Parse("cccccccc-0000-0000-0000-000000000021"), track.TrackId);
+        Assert.Equal([Guid.Parse("ffffffff-0000-0000-0000-000000000001")], track.AlbumArtistIds);
+        Assert.Single(musicBrainz.Requests);
+        Assert.Contains("inc=artist-credits+recordings+release-groups+media", musicBrainz.Requests[0].Request.RequestUri!.ToString());
     }
 
     [Fact]

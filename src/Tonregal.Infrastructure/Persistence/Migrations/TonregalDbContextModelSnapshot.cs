@@ -310,6 +310,10 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LibraryPath")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
                     b.Property<double?>("MatchScore")
                         .HasColumnType("REAL");
 

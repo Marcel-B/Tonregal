@@ -80,4 +80,24 @@ public sealed class InboxApiTests : IDisposable
         Assert.Equal(ImportState.New, (await response.Content.ReadFromJsonAsync<ImportJobDto>(Json, Ct))!.State);
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
+
+    [Fact]
+    public async Task Verworfene_Datei_bekommt_keinen_neuen_Job()
+    {
+        await WaitForRunAsync();
+        var job = (await _client.GetFromJsonAsync<InboxResponse>("/api/inbox", Json, Ct))!.Jobs[0];
+
+        var reject = await _client.PostAsync($"/api/inbox/{job.Id}/reject", null, Ct);
+        var select = await _client.PostAsJsonAsync($"/api/inbox/{job.Id}/select", new SelectCandidateRequest(Guid.NewGuid(), Guid.NewGuid()), Ct);
+        var import = await _client.PostAsJsonAsync("/api/inbox/import", new ImportRequest([job.Id]), Ct);
+        _factory.Services.GetRequiredService<InboxService>().RequestRun();
+        await Task.Delay(500, Ct);
+        await WaitForRunAsync();
+
+        Assert.Equal(HttpStatusCode.NoContent, reject.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, select.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, import.StatusCode);
+        Assert.Empty((await _client.GetFromJsonAsync<InboxResponse>("/api/inbox", Json, Ct))!.Jobs);
+        Assert.True(File.Exists(Path.Combine(_library.MusicRoot, "Inbox", "Testalbum", "01.mp3")));
+    }
 }

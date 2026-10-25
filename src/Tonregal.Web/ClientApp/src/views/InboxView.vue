@@ -9,8 +9,9 @@ import Message from 'primevue/message'
 import SelectButton from 'primevue/selectbutton'
 import Dialog from 'primevue/dialog'
 import CandidateTable from '@/components/CandidateTable.vue'
+import ReleaseCover from '@/components/ReleaseCover.vue'
 import { useStatusStore } from '@/stores/status'
-import { api, formatDuration, type ImportJob, type ImportJobCandidates, type ImportState } from '@/api'
+import { api, formatDuration, type ImportJob, type ImportJobCandidates, type ImportState, type RecordingCandidate } from '@/api'
 
 const status = useStatusStore()
 const jobs = ref<ImportJob[]>([])
@@ -81,18 +82,40 @@ const releaseLine = (job: ImportJob) => {
 const progress = computed(() => {
   const s = status.inbox
   if (!s) return ''
-  if (s.running) return s.currentPath ? `Verarbeite ${s.currentPath} …` : 'Prüfe die Inbox …'
-  return s.waiting ? `${s.waiting} Datei(en) werden noch kopiert` : ''
+  if (s.running) {
+    if (s.importsPending || s.imported) return `Übernehme in die Library … ${s.imported} fertig, ${s.importsPending} offen`
+    return s.currentPath ? `Verarbeite ${s.currentPath} …` : 'Prüfe die Inbox …'
+  }
+  const parts = []
+  if (s.imported) parts.push(`${s.imported} Datei(en) in die Library übernommen`)
+  if (s.waiting) parts.push(`${s.waiting} Datei(en) werden noch kopiert`)
+  return parts.join(' · ')
 })
+
+const matched = (group?: string) => jobs.value.filter((j) => j.state === 'Matched' && (group === undefined || j.group === group))
+const actionError = ref<string | null>(null)
+
+async function run(action: () => Promise<unknown>) {
+  actionError.value = null
+  try {
+    await action()
+  } catch (e) {
+    actionError.value = e instanceof Error ? e.message : String(e)
+  }
+  await load()
+}
+
+const importJobs = (list: ImportJob[]) =>
+  run(async () => {
+    status.inbox = await api.importJobs(list.map((j) => j.id))
+  })
+const reject = (job: ImportJob) => run(() => api.rejectImport(job.id))
 
 async function scan() {
   status.inbox = await api.scanInbox()
 }
 
-async function retry(job: ImportJob) {
-  await api.retryImport(job.id)
-  await load()
-}
+const retry = (job: ImportJob) => run(() => api.retryImport(job.id))
 
 const candidatesFor = ref<ImportJob | null>(null)
 const candidates = ref<ImportJobCandidates | null>(null)
@@ -104,14 +127,30 @@ async function showCandidates(job: ImportJob) {
   candidatesVisible.value = true
   candidates.value = await api.importCandidates(job.id)
 }
+
+async function select(candidate: RecordingCandidate) {
+  const job = candidatesFor.value
+  if (!job || !candidate.releaseId) return
+  candidatesVisible.value = false
+  await run(() => api.selectCandidate(job.id, candidate.recordingId, candidate.releaseId!))
+}
 </script>
 
 <template>
   <div class="flex flex-wrap items-center gap-3 mb-6">
     <h1 class="text-2xl font-semibold mr-auto">Inbox</h1>
     <span v-if="progress" class="text-sm text-surface-500" data-testid="inbox-progress">{{ progress }}</span>
+    <Button
+      v-if="matched().length"
+      :label="`Alle erkannten übernehmen (${matched().length})`"
+      icon="pi pi-check"
+      size="small"
+      data-testid="import-all"
+      @click="importJobs(matched())"
+    />
     <Button label="Inbox prüfen" icon="pi pi-refresh" severity="secondary" size="small" :loading="status.inbox?.running" @click="scan" />
   </div>
+  <Message v-if="actionError" severity="error" class="mb-4">{{ actionError }}</Message>
 
   <Message v-if="error" severity="error" class="mb-4">{{ error }}</Message>
   <Message v-if="status.inbox?.lastError" severity="warn" class="mb-4">{{ status.inbox.lastError }}</Message>
@@ -124,7 +163,18 @@ async function showCandidates(job: ImportJob) {
     <SelectButton v-model="filter" :options="filterOptions" option-label="label" option-value="value" :allow-empty="false" class="mb-4" />
     <DataTable :value="visibleJobs" data-key="id" size="small" row-group-mode="subheader" group-rows-by="group">
       <template #groupheader="{ data }">
-        <span class="font-semibold"><i class="pi pi-folder text-surface-500 mr-2" />{{ data.group || 'Ohne Ordner' }}</span>
+        <div class="flex items-center gap-3">
+          <span class="font-semibold"><i class="pi pi-folder text-surface-500 mr-2" />{{ data.group || 'Ohne Ordner' }}</span>
+          <Button
+            v-if="matched(data.group).length"
+            :label="`Ordner übernehmen (${matched(data.group).length})`"
+            icon="pi pi-check"
+            size="small"
+            text
+            data-testid="import-group"
+            @click="importJobs(matched(data.group))"
+          />
+        </div>
       </template>
       <Column header="Status" class="w-28">
         <template #body="{ data }">
@@ -142,10 +192,13 @@ async function showCandidates(job: ImportJob) {
       </Column>
       <Column header="Treffer">
         <template #body="{ data }">
-          <template v-if="data.selected">
-            <div data-testid="job-match">{{ data.selected.title }} <span class="text-surface-500">· {{ data.selected.artists.join(', ') }}</span></div>
-            <div class="text-sm text-surface-500">{{ releaseLine(data) }}</div>
-          </template>
+          <div v-if="data.selected" class="flex items-center gap-3">
+            <ReleaseCover :release-id="data.selected.releaseId" class="w-10 h-10 shrink-0" />
+            <div>
+              <div data-testid="job-match">{{ data.selected.title }} <span class="text-surface-500">· {{ data.selected.artists.join(', ') }}</span></div>
+              <div class="text-sm text-surface-500">{{ releaseLine(data) }}</div>
+            </div>
+          </div>
           <div v-if="data.reviewReason" class="text-sm text-orange-500" data-testid="job-reason">{{ data.reviewReason }}</div>
           <div v-if="data.error" class="text-sm text-red-500 break-all">{{ data.error }}</div>
         </template>
@@ -153,9 +206,20 @@ async function showCandidates(job: ImportJob) {
       <Column header="Score" class="w-20 tabular-nums">
         <template #body="{ data }">{{ data.matchScore != null ? percent(data.matchScore) : '' }}</template>
       </Column>
-      <Column class="w-24">
+      <Column class="w-40">
         <template #body="{ data }">
           <div class="flex justify-end">
+            <Button
+              v-if="data.state === 'Matched'"
+              icon="pi pi-check"
+              text
+              rounded
+              size="small"
+              aria-label="In die Library übernehmen"
+              title="In die Library übernehmen"
+              data-testid="import-job"
+              @click="importJobs([data])"
+            />
             <Button
               v-if="data.candidateCount"
               icon="pi pi-list"
@@ -167,6 +231,17 @@ async function showCandidates(job: ImportJob) {
               @click="showCandidates(data)"
             />
             <Button v-if="data.error || data.state === 'NeedsReview'" icon="pi pi-replay" text rounded size="small" aria-label="Erneut abgleichen" title="Erneut abgleichen" @click="retry(data)" />
+            <Button
+              icon="pi pi-times"
+              text
+              rounded
+              size="small"
+              severity="secondary"
+              aria-label="Verwerfen"
+              title="Verwerfen (Datei bleibt in der Inbox)"
+              data-testid="reject-job"
+              @click="reject(data)"
+            />
           </div>
         </template>
       </Column>
@@ -186,6 +261,8 @@ async function showCandidates(job: ImportJob) {
       :candidates="candidates.candidates"
       :selected-recording-id="candidates.selectedRecordingId"
       :selected-release-id="candidates.selectedReleaseId"
+      selectable
+      @select="select"
     />
   </Dialog>
 </template>

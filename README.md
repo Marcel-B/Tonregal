@@ -113,7 +113,14 @@ Eine Datei wird eingelesen, sobald ihre Größe 10 s stabil ist; ein Unterordner
 Jede Datei bekommt einen Import-Job: Tags, Hash und Fingerprint, dann AcoustID und MusicBrainz.
 Ein eindeutiger Treffer ab 90 % ohne Widerspruch zu den Tags ist *Erkannt*, alles andere landet mit
 Begründung unter *Prüfen*. Stimmt die Mehrheit der Dateien eines Ordners auf ein Release, bekommen alle
-dieses Release. Die Dateien in der Inbox werden dabei noch nicht verändert oder verschoben.
+dieses Release. Die Dateien in der Inbox werden dabei nicht verändert.
+
+**Übernehmen:** Auf der Inbox-Seite lässt sich ein erkannter Treffer einzeln, pro Ordner oder für alle
+übernehmen; bei *Prüfen* wählt man zuerst in der Kandidatenliste das richtige Release. Tonregal schreibt
+dann Tags (MP3 als ID3v2.4, Feldnamen wie Picard) und Cover in eine Kopie, prüft sie, benennt sie atomar
+nach der Ordnerregel `Library/{AlbumArtist}/{Jahr} - {Album}/{Disc-}{NN} - {Titel}.{ext}` um und löscht
+erst dann das Original aus der Inbox. `cover.jpg` im Albumordner kommt aus der Datei oder dem Cover Art
+Archive. *Verwerfen* lässt die Datei in der Inbox liegen, ohne sie erneut abzugleichen.
 
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf
 `/Volumes/T7/Musik/.tonregal-mount`), und starten nach einem Remount von selbst neu.

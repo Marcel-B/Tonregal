@@ -49,6 +49,10 @@ public sealed class LibraryScanner(
 
         await LoadCachesAsync(ct);
         var existing = await db.AudioFiles.Include(f => f.Track).ToDictionaryAsync(f => f.Path, StringComparer.Ordinal, ct);
+        // Frisch aus der Inbox übernommene Dateien mit ihrem Import-Job verknüpfen.
+        var imported = await db.ImportJobs
+            .Where(j => j.State == ImportState.Imported && j.AudioFileId == null && j.LibraryPath != null)
+            .ToDictionaryAsync(j => j.LibraryPath!, StringComparer.Ordinal, ct);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var errors = new List<ScanError>();
         int added = 0, updated = 0, unchanged = 0, processed = 0;
@@ -77,6 +81,11 @@ public sealed class LibraryScanner(
                     {
                         audioFile = new AudioFile { Path = relative, FileHash = hash, AddedAt = time.GetUtcNow(), Source = FileSource.Legacy };
                         db.AudioFiles.Add(audioFile);
+                        if (imported.TryGetValue(relative, out var job))
+                        {
+                            audioFile.Source = job.Source;
+                            job.AudioFile = audioFile;
+                        }
                         existing[relative] = audioFile;
                         added++;
                     }

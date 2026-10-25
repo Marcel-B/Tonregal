@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
+using Tonregal.Domain.Entities;
 using Tonregal.Domain.ValueObjects;
 
 namespace Tonregal.Infrastructure.Metadata;
@@ -90,6 +91,66 @@ public sealed class MetadataLookup(
                 medium?.Position, track?.Position, medium?.TrackCount,
                 release.Date, release.Country, medium?.Format, match.Score), rank, release.Date ?? "9999");
         }
+    }
+
+    /// <summary>MusicBrainz-ID von „Various Artists“.</summary>
+    internal static readonly Guid VariousArtistsId = Guid.Parse("89ad4ac3-39f7-470e-963a-56509c546377");
+
+    public async Task<ReleaseTrack?> GetReleaseTrackAsync(Guid releaseId, Guid recordingId, CancellationToken ct)
+    {
+        var release = await musicBrainz.GetReleaseAsync(releaseId, ct);
+        if (release is null)
+            return null;
+
+        var media = release.Media ?? [];
+        foreach (var medium in media)
+        {
+            var track = medium.Tracks?.FirstOrDefault(t => t.Recording?.Id == recordingId);
+            if (track is null)
+                continue;
+
+            var trackCredit = track.Recording?.ArtistCredit is { Count: > 0 } rc ? rc : release.ArtistCredit ?? [];
+            var albumCredit = release.ArtistCredit ?? [];
+            var albumArtistIds = albumCredit.Select(c => c.Artist.Id).ToList();
+            var group = release.ReleaseGroup;
+            var secondary = group?.SecondaryTypes ?? [];
+            var kind = albumArtistIds.Contains(VariousArtistsId) ? AlbumKind.Compilation
+                : group?.PrimaryType switch
+                {
+                    "EP" => AlbumKind.Ep,
+                    "Single" => AlbumKind.Single,
+                    _ => AlbumKind.Album,
+                };
+
+            return new ReleaseTrack
+            {
+                RecordingId = recordingId,
+                TrackId = track.Id,
+                Title = track.Title,
+                Artists = trackCredit.Select(c => c.Artist.Name).ToList(),
+                ArtistIds = trackCredit.Select(c => c.Artist.Id).ToList(),
+                ArtistSort = trackCredit.FirstOrDefault()?.Artist.SortName,
+                ReleaseId = release.Id,
+                ReleaseGroupId = group?.Id,
+                Album = release.Title,
+                AlbumArtist = albumCredit.Format() ?? trackCredit.Format() ?? "",
+                AlbumArtistIds = albumArtistIds,
+                AlbumArtistSort = albumCredit.Count == 1 ? albumCredit[0].Artist.SortName : null,
+                Kind = kind,
+                ReleaseType = group?.PrimaryType is { } primary
+                    ? string.Join("; ", secondary.Prepend(primary).Select(t => t.ToLowerInvariant()))
+                    : null,
+                ReleaseStatus = release.Status?.ToLowerInvariant(),
+                Country = release.Country,
+                Year = release.Year,
+                Disc = medium.Position,
+                DiscCount = Math.Max(1, media.Count),
+                Track = track.Position,
+                TrackCount = medium.TrackCount,
+            };
+        }
+
+        return null;
     }
 
     /// <summary>Kleiner ist besser: offiziell vor inoffiziell, Album vor EP vor Single, ohne Zusatztyp vor Compilation/Live.</summary>
