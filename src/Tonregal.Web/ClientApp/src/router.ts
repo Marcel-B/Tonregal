@@ -2,6 +2,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import DashboardView from './views/DashboardView.vue'
 
+/** Einträge der Navigation. */
 export const routes = [
   { path: '/', name: 'dashboard', component: DashboardView, meta: { title: 'Übersicht', icon: 'pi pi-home' } },
   { path: '/library', name: 'library', component: () => import('./views/LibraryView.vue'), meta: { title: 'Bibliothek', icon: 'pi pi-book' } },
@@ -11,5 +12,9 @@ export const routes = [
 
 export const router = createRouter({
   history: createWebHistory(),
-  routes,
+  routes: [
+    ...routes,
+    { path: '/library/artists/:id(\\d+)', name: 'artist', component: () => import('./views/ArtistView.vue'), props: (r) => ({ id: Number(r.params.id) }) },
+    { path: '/library/albums/:id(\\d+)', name: 'album', component: () => import('./views/AlbumView.vue'), props: (r) => ({ id: Number(r.params.id) }) },
+  ],
 })

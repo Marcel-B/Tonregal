@@ -21,6 +21,11 @@ die Datenbank ist nur ein Index und lässt sich jederzeit aus der Library neu au
 | `tests/Tonregal.Tests` | xUnit v3 (Domain, Datenbank, API); UI-Tests mit Vitest in der ClientApp |
 | `deploy/` | Setup- und Deploy-Scripts, launchd-Vorlagen, Shell-Funktionen für oi-o-mat |
 
+**Library-Scan:** Beim Start und per Knopf in der Bibliothek liest Tonregal alle Audiodateien unter
+`Library/` (MP3, FLAC, M4A, Ogg/Opus, WAV) per TagLibSharp ein und gleicht den Index ab. Unveränderte
+Dateien (Größe und Änderungszeit) werden übersprungen, verschwundene entfernt; ohne Mount-Marker
+scannt die App nicht. Punkt-Ordner wie `.trash` und `._*`-Dateien gehören nicht zur Library.
+
 Ordnerregel der Library: `Library/{AlbumArtist}/{Year} - {Album}/{Disc-}{NN} - {Title}.{ext}`,
 Compilations unter `Library/Various Artists/…`.
 
