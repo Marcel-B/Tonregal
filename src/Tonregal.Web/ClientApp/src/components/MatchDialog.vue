@@ -6,7 +6,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
-import { api, formatDuration, type FileDto, type MatchResponse, type TrackDto } from '@/api'
+import { api, formatDuration, type FileDto, type MatchResponse, type RecordingCandidate, type TrackDto } from '@/api'
 
 /** Zeigt, was AcoustID und MusicBrainz zu einer Datei finden – ohne etwas zu ändern. */
 const props = defineProps<{ track: TrackDto | null; file: FileDto | null }>()
@@ -34,6 +34,9 @@ watch(
   { immediate: true },
 )
 
+// Ausgaben desselben Albums unterscheiden sich meist nur in Datum, Land und Medium.
+const releaseDetails = (c: RecordingCandidate) =>
+  [c.releaseArtist, c.releaseDate ?? c.year, c.country, c.mediumFormat].filter(Boolean).join(' · ')
 const percent = (score: number) => `${Math.round(score * 100)} %`
 const position = (c: { disc: number | null; trackNumber: number | null; trackCount: number | null }) =>
   c.trackNumber ? `${c.disc && c.disc > 1 ? `${c.disc}-` : ''}${c.trackNumber}${c.trackCount ? `/${c.trackCount}` : ''}` : ''
@@ -62,7 +65,7 @@ const position = (c: { disc: number | null; trackNumber: number | null; trackCou
         <Column header="Release">
           <template #body="{ data }">
             <a v-if="data.releaseId" :href="`https://musicbrainz.org/release/${data.releaseId}`" target="_blank" rel="noopener" class="hover:underline">{{ data.releaseTitle }}</a>
-            <div class="text-sm text-surface-500">{{ [data.releaseArtist, data.year].filter(Boolean).join(' · ') }}</div>
+            <div class="text-sm text-surface-500">{{ releaseDetails(data) }}</div>
           </template>
         </Column>
         <Column header="Typ" class="w-28">

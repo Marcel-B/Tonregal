@@ -20,6 +20,9 @@ public sealed record RecordingCandidate(
     int? Disc,
     int? TrackNumber,
     int? TrackCount,
+    string? ReleaseDate,
+    string? Country,
+    string? MediumFormat,
     double Score);
 
 /// <summary>AcoustID- und MusicBrainz-Abgleich, rate-limitiert und gecacht.</summary>

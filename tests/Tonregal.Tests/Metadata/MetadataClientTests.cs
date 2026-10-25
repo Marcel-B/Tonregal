@@ -129,7 +129,25 @@ public sealed class MetadataClientTests : IDisposable
         Assert.Equal("Album", best.ReleaseType);
         Assert.Equal(2024, best.Year);
         Assert.Equal((1, 2, 3), (best.Disc, best.TrackNumber, best.TrackCount));
+        Assert.Equal(("2024-03-01", "XE", "Digital Media"), (best.ReleaseDate, best.Country, best.MediumFormat));
         Assert.Equal(0.97, best.Score);
+    }
+
+    [Fact]
+    public async Task Lookup_zeigt_jedes_Release_nur_einmal()
+    {
+        // Zwei Recordings derselben Aufnahme, die an denselben Releases hängen.
+        var acoustId = new StubHandler(_ => StubHandler.Json("""
+            { "status": "ok", "results": [ { "id": "dddddddd-0000-0000-0000-000000000001", "score": 0.98, "recordings": [
+                { "id": "6f0e1a5c-6a43-4f4e-9b5c-2f6c2b2f1a11" }, { "id": "eeeeeeee-0000-0000-0000-000000000009" } ] } ] }
+            """));
+        var musicBrainz = new StubHandler(_ => StubHandler.File("musicbrainz-recording.json"));
+        var lookup = new MetadataLookup(AcoustId(acoustId), MusicBrainz(musicBrainz), _options, NullLogger<MetadataLookup>.Instance);
+
+        var candidates = await lookup.LookupAsync(Fingerprint, Ct);
+
+        Assert.Equal(2, musicBrainz.Requests.Count);
+        Assert.Equal(["Testalbum", "Zweiter Song", "Best of Testband"], candidates.Select(c => c.ReleaseTitle));
     }
 
     [Fact]

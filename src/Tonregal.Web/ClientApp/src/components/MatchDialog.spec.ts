@@ -24,7 +24,8 @@ describe('MatchDialog', () => {
       candidates: [{
         recordingId: 'r1', acoustId: 'a1', title: 'Zweiter Song', artists: ['Testband', 'Gast'], durationMs: 2040,
         releaseId: 'rel1', releaseGroupId: 'rg1', releaseTitle: 'Testalbum', releaseArtist: 'Testband', releaseType: 'Album',
-        releaseStatus: 'Official', year: 2024, disc: 1, trackNumber: 2, trackCount: 3, score: 0.97,
+        releaseStatus: 'Official', year: 2024, disc: 1, trackNumber: 2, trackCount: 3,
+        releaseDate: '2024-03-01', country: 'XE', mediumFormat: 'Digital Media', score: 0.97,
       }],
     }
     const fetch = vi.fn(async () => new Response(JSON.stringify(response)))
@@ -37,6 +38,7 @@ describe('MatchDialog', () => {
     expect(document.body.textContent).toContain('97 %')
     expect(document.body.textContent).toContain('Testalbum')
     expect(document.body.textContent).toContain('2/3')
+    expect(document.body.textContent).toContain('Testband · 2024-03-01 · XE · Digital Media')
     wrapper.unmount()
   })
 

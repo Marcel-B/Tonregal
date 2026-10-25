@@ -48,11 +48,15 @@ public sealed class MetadataLookup(
             }
         }
 
+        // Mehrere Recordings (z. B. Duplikate in MusicBrainz) hängen oft am selben Release;
+        // je Release reicht der beste Treffer.
+        var seenReleases = new HashSet<Guid>();
         return candidates
             .OrderByDescending(c => c.Candidate.Score)
             .ThenBy(c => c.Rank)
             .ThenBy(c => c.Date, StringComparer.Ordinal)
             .Select(c => c.Candidate)
+            .Where(c => c.ReleaseId is not { } releaseId || seenReleases.Add(releaseId))
             .ToList();
     }
 
@@ -70,7 +74,7 @@ public sealed class MetadataLookup(
         {
             yield return (new RecordingCandidate(
                 recording.Id, match.AcoustId, recording.Title, artists, recording.Length,
-                null, null, null, null, null, null, null, null, null, null, match.Score), int.MaxValue, "9999");
+                null, null, null, null, null, null, null, null, null, null, null, null, null, match.Score), int.MaxValue, "9999");
             yield break;
         }
 
@@ -83,7 +87,8 @@ public sealed class MetadataLookup(
                 recording.Id, match.AcoustId, recording.Title, artists, recording.Length,
                 release.Id, release.ReleaseGroup?.Id, release.Title, release.ArtistCredit.Format(),
                 release.ReleaseGroup?.PrimaryType, release.Status, release.Year,
-                medium?.Position, track?.Position, medium?.TrackCount, match.Score), rank, release.Date ?? "9999");
+                medium?.Position, track?.Position, medium?.TrackCount,
+                release.Date, release.Country, medium?.Format, match.Score), rank, release.Date ?? "9999");
         }
     }
 

@@ -109,6 +109,9 @@ export interface RecordingCandidate {
   disc: number | null
   trackNumber: number | null
   trackCount: number | null
+  releaseDate: string | null
+  country: string | null
+  mediumFormat: string | null
   score: number
 }
 
