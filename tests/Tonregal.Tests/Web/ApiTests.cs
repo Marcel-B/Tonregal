@@ -8,22 +8,20 @@ namespace Tonregal.Tests.Web;
 
 public sealed class ApiTests : IDisposable
 {
-    private readonly string _musicRoot = Directory.CreateTempSubdirectory("tonregal-").FullName;
+    private readonly TestLibrary _library = new(populate: false);
     private readonly WebApplicationFactory<Program> _factory;
 
     public ApiTests()
     {
-        File.WriteAllText(Path.Combine(_musicRoot, ".tonregal-mount"), "");
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
             .UseEnvironment("Testing")
-            .UseSetting("Tonregal:MusicRoot", _musicRoot));
+            .UseSetting("Tonregal:MusicRoot", _library.MusicRoot));
     }
 
     public void Dispose()
     {
         _factory.Dispose();
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        Directory.Delete(_musicRoot, recursive: true);
+        _library.Dispose();
     }
 
     [Fact]
@@ -42,6 +40,6 @@ public sealed class ApiTests : IDisposable
         var stats = await _factory.CreateClient().GetFromJsonAsync<LibraryStats>("/api/stats", TestContext.Current.CancellationToken);
 
         Assert.Equal(new LibraryStats(0, 0, 0, 0, 0, 0), stats);
-        Assert.True(File.Exists(Path.Combine(_musicRoot, "app", "tonregal.db")));
+        Assert.True(File.Exists(Path.Combine(_library.MusicRoot, "app", "tonregal.db")));
     }
 }

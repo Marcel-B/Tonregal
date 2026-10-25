@@ -20,6 +20,9 @@ public class AudioFile
     /// <summary>SHA-256 des Dateiinhalts, hex.</summary>
     public required string FileHash { get; set; }
     public DateTimeOffset AddedAt { get; set; }
+
+    /// <summary>Änderungszeit der Datei beim letzten Scan; mit der Größe Grundlage für inkrementelle Scans.</summary>
+    public DateTimeOffset ModifiedAt { get; set; }
     public FileSource Source { get; set; }
 
     public List<AnalysisResult> AnalysisResults { get; set; } = [];

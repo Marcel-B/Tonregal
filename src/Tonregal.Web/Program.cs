@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -7,6 +8,7 @@ using Tonregal.Infrastructure;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Api;
 using Tonregal.Web.Hubs;
+using Tonregal.Web.Library;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,7 +24,10 @@ builder.Services.AddSerilog((services, logger) =>
 });
 
 builder.Services.AddInfrastructure(builder.Configuration, builder.Environment.ContentRootPath);
-builder.Services.AddSignalR();
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddSingleton<LibraryScanService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<LibraryScanService>());
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
@@ -52,7 +57,7 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGroup("/api").MapTonregalApi();
+app.MapGroup("/api").MapTonregalApi().MapLibraryApi();
 app.MapHub<StatusHub>("/hub");
 app.MapFallbackToFile("index.html");
 

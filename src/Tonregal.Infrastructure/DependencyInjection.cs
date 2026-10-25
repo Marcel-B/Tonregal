@@ -4,7 +4,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Tonregal.Application;
+using Tonregal.Application.Abstractions;
+using Tonregal.Infrastructure.Library;
 using Tonregal.Infrastructure.Persistence;
+using Tonregal.Infrastructure.Tagging;
 
 namespace Tonregal.Infrastructure;
 
@@ -21,6 +24,9 @@ public static class DependencyInjection
         services.AddDbContext<TonregalDbContext>((sp, o) =>
             o.UseSqlite(connectionString
                 ?? $"Data Source={sp.GetRequiredService<IOptions<TonregalOptions>>().Value.Database}"));
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<ITagReader, TagLibTagReader>();
+        services.AddScoped<ILibraryScanner, LibraryScanner>();
         return services;
     }
 }
