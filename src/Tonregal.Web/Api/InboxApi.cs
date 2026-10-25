@@ -37,6 +37,8 @@ public sealed record ImportRequest(IReadOnlyList<int> JobIds);
 
 public sealed record UploadResponse(string Path);
 
+public sealed record RetryAllResponse(int Count);
+
 public sealed record ImportJobCandidates(int JobId, Guid? SelectedRecordingId, Guid? SelectedReleaseId, IReadOnlyList<RecordingCandidate> Candidates);
 
 public static class InboxApi
@@ -83,6 +85,31 @@ public static class InboxApi
             await db.SaveChangesAsync(ct);
             service.RequestRun();
             return TypedResults.Ok(ToDto(job));
+        });
+
+        // Alle Problemfälle von vorn, z. B. nach einem Update der Erkennung.
+        inbox.MapPost("/retry-all", async (TonregalDbContext db, InboxService service, CancellationToken ct) =>
+        {
+            var jobs = await db.ImportJobs
+                .Where(j => ImportJob.ActiveStates.Contains(j.State) && (j.State == ImportState.NeedsReview || j.Error != null))
+                .ToListAsync(ct);
+            foreach (var job in jobs)
+                job.Reset();
+            await db.SaveChangesAsync(ct);
+            service.RequestRun();
+            return new RetryAllResponse(jobs.Count);
+        });
+
+        // Problemfälle als Text, zum Kopieren und Weitergeben.
+        inbox.MapGet("/report", async (TonregalDbContext db, TimeProvider time, CancellationToken ct) =>
+        {
+            var jobs = (await db.ImportJobs.AsNoTracking()
+                    .Where(j => ImportJob.ActiveStates.Contains(j.State))
+                    .ToListAsync(ct))
+                .Where(InboxReport.IsProblem)
+                .OrderBy(j => j.SourcePath, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return TypedResults.Text(InboxReport.Format(jobs, Candidates, time.GetUtcNow()), "text/plain; charset=utf-8");
         });
 
         // Entscheidung im Review: dieser Kandidat ist es. Der Job gilt damit als erkannt.

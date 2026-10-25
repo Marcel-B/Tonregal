@@ -119,6 +119,34 @@ async function scan() {
 
 const retry = (job: ImportJob) => run(() => api.retryImport(job.id))
 
+const problems = computed(() => jobs.value.filter((j) => j.state === 'NeedsReview' || (j.error && j.state !== 'Rejected')))
+const retryAll = () => run(() => api.retryAllImports())
+
+// Bericht zum Weitergeben. Über http im Tailnet gibt es keine Clipboard-API, daher Textfeld plus execCommand.
+const report = ref('')
+const reportVisible = ref(false)
+const reportField = ref<HTMLTextAreaElement>()
+const copied = ref(false)
+async function showReport() {
+  copied.value = false
+  report.value = 'Lade …'
+  reportVisible.value = true
+  try {
+    report.value = await api.inboxReport()
+  } catch (e) {
+    report.value = e instanceof Error ? e.message : String(e)
+  }
+}
+async function copyReport() {
+  try {
+    await navigator.clipboard.writeText(report.value)
+  } catch {
+    reportField.value?.select()
+    document.execCommand('copy')
+  }
+  copied.value = true
+}
+
 const candidatesFor = ref<ImportJob | null>(null)
 const candidates = ref<ImportJobCandidates | null>(null)
 const candidatesVisible = ref(false)
@@ -149,6 +177,24 @@ async function select(candidate: RecordingCandidate) {
       size="small"
       data-testid="import-all"
       @click="importJobs(matched())"
+    />
+    <Button
+      v-if="problems.length"
+      :label="`Fehler kopieren (${problems.length})`"
+      icon="pi pi-copy"
+      severity="secondary"
+      size="small"
+      data-testid="report"
+      @click="showReport"
+    />
+    <Button
+      v-if="problems.length"
+      :label="`Alle erneut prüfen (${problems.length})`"
+      icon="pi pi-replay"
+      severity="secondary"
+      size="small"
+      data-testid="retry-all"
+      @click="retryAll"
     />
     <Button label="Inbox prüfen" icon="pi pi-refresh" severity="secondary" size="small" :loading="status.inbox?.running" @click="scan" />
     <InboxUpload @uploaded="scan" />
@@ -252,6 +298,21 @@ async function select(candidate: RecordingCandidate) {
       </Column>
     </DataTable>
   </template>
+
+  <Dialog v-model:visible="reportVisible" modal header="Problemfälle" class="w-full max-w-4xl" :dismissable-mask="true">
+    <textarea
+      ref="reportField"
+      :value="report"
+      readonly
+      rows="20"
+      class="w-full font-mono text-xs p-3 rounded-md bg-surface-100 dark:bg-surface-800"
+      data-testid="report-text"
+    />
+    <div class="flex items-center justify-end gap-3 mt-3">
+      <span v-if="copied" class="text-sm text-green-500">Kopiert, einfach in den Chat einfügen</span>
+      <Button label="Kopieren" icon="pi pi-copy" size="small" @click="copyReport" />
+    </div>
+  </Dialog>
 
   <Dialog
     v-model:visible="candidatesVisible"

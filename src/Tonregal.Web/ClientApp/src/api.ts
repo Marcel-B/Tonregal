@@ -231,6 +231,12 @@ export const api = {
   retryImport: (jobId: number) => request<ImportJob>('POST', `/inbox/${jobId}/retry`),
   selectCandidate: (jobId: number, recordingId: string, releaseId: string) =>
     request<ImportJob>('POST', `/inbox/${jobId}/select`, { recordingId, releaseId }),
+  retryAllImports: () => request<{ count: number }>('POST', '/inbox/retry-all'),
+  inboxReport: async () => {
+    const response = await fetch('/api/inbox/report')
+    if (!response.ok) throw new Error(`/inbox/report: HTTP ${response.status}`)
+    return response.text()
+  },
   rejectImport: (jobId: number) => request<void>('POST', `/inbox/${jobId}/reject`),
   importJobs: (jobIds: number[]) => request<InboxStatus>('POST', '/inbox/import', { jobIds }),
   releaseCoverUrl: (releaseId: string) => `https://coverartarchive.org/release/${releaseId}/front-250`,

@@ -102,4 +102,28 @@ describe('InboxView', () => {
 
     expect(fetch).toHaveBeenCalledWith('/api/inbox/3/reject', expect.objectContaining({ method: 'POST' }))
   })
+
+  it('kopiert den Fehlerbericht und prüft alle Problemfälle neu', async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      url === '/api/inbox/report'
+        ? new Response('Tonregal Inbox – 2 Datei(en) mit Problemen')
+        : init?.method === 'POST'
+          ? new Response(JSON.stringify({ count: 2 }))
+          : new Response(JSON.stringify(response)),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="report"]').text()).toBe('Fehler kopieren (2)')
+
+    await wrapper.find('[data-testid="report"]').trigger('click')
+    await flushPromises()
+    expect((document.querySelector('[data-testid="report-text"]') as HTMLTextAreaElement).value).toContain('2 Datei(en) mit Problemen')
+
+    await wrapper.find('[data-testid="retry-all"]').trigger('click')
+    await flushPromises()
+    expect(fetch.mock.calls.map((c) => [c[0], c[1]?.method])).toContainEqual(['/api/inbox/retry-all', 'POST'])
+    wrapper.unmount()
+  })
 })

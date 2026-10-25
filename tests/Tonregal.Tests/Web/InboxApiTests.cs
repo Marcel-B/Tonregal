@@ -102,6 +102,21 @@ public sealed class InboxApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Bericht_listet_Problemfaelle_und_alle_lassen_sich_neu_pruefen()
+    {
+        await WaitForRunAsync();
+
+        var report = await _client.GetStringAsync("/api/inbox/report", Ct);
+        var retry = await _client.PostAsync("/api/inbox/retry-all", null, Ct);
+
+        Assert.StartsWith("Tonregal Inbox – 1 Datei(en) mit Problemen", report);
+        Assert.Contains("Testalbum/01.mp3", report);
+        Assert.Contains("  Fehler: AcoustID-API-Key fehlt", report);
+        Assert.Contains("  Tags: Testband – Erster Song · Testalbum", report);
+        Assert.Equal(1, (await retry.Content.ReadFromJsonAsync<RetryAllResponse>(Json, Ct))!.Count);
+    }
+
+    [Fact]
     public async Task Upload_legt_Dateien_mit_Ordner_in_die_Inbox()
     {
         async Task<HttpResponseMessage> UploadAsync(string path, string testFile = "song2.flac")
