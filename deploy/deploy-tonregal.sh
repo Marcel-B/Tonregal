@@ -31,7 +31,7 @@ plist="$staging/de.bvelop.tonregal.plist"
 render_template "$DEPLOY_DIR/launchd/de.bvelop.tonregal.plist.template" "$plist" \
   MUSIC_ROOT="$MUSIC_ROOT" TAILSCALE_IP="$ip" BREW_PREFIX="$brew_prefix"
 plutil -lint "$plist" >/dev/null
-install_agent de.bvelop.tonregal "$plist"
+install_agent de.bvelop.tonregal "$plist" "$app/Tonregal.Web" "$MUSIC_ROOT/logs/tonregal.stdout.log"
 
 echo
 echo "Tonregal läuft unter http://$ip:5100"

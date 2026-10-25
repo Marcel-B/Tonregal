@@ -30,7 +30,7 @@ plist="$(mktemp)"
 render_template "$DEPLOY_DIR/launchd/org.navidrome.server.plist.template" "$plist" \
   MUSIC_ROOT="$MUSIC_ROOT" NAVIDROME_BIN="$brew_prefix/bin/navidrome" BREW_PREFIX="$brew_prefix"
 plutil -lint "$plist" >/dev/null
-install_agent org.navidrome.server "$plist"
+install_agent org.navidrome.server "$plist" "$brew_prefix/bin/navidrome" "$MUSIC_ROOT/logs/navidrome.log"
 rm -f "$plist"
 
 echo

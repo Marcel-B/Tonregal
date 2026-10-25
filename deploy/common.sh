@@ -36,12 +36,32 @@ render_template() {
   printf '%s\n' "$content" > "$dst"
 }
 
-# install_agent <label> <plist-datei>
+# install_agent <label> <plist-datei> <programm> <logdatei>
 install_agent() {
-  local label="$1" plist="$2" domain="gui/$(id -u)"
+  local label="$1" plist="$2" program="$3" log="$4" domain="gui/$(id -u)"
   mkdir -p "$LAUNCH_AGENTS"
   cp "$plist" "$LAUNCH_AGENTS/$label.plist"
   launchctl bootout "$domain/$label" 2>/dev/null || true
   launchctl bootstrap "$domain" "$LAUNCH_AGENTS/$label.plist"
   launchctl kickstart -k "$domain/$label"
+
+  sleep 5
+  if launchctl print "$domain/$label" | grep -q "state = running"; then
+    return 0
+  fi
+
+  echo >&2
+  echo "Warnung: $label läuft nicht." >&2
+  launchctl print "$domain/$label" | grep -E "last exit" >&2 || true
+  [[ -f "$log" ]] && tail -n 10 "$log" >&2
+  cat >&2 <<HINT
+
+Meist fehlt die Freigabe für die externe SSD: launchd darf ohne sie keine Dateien
+auf der T7 öffnen und bricht mit EX_CONFIG (78) ab. Unter
+  Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff
+mit „+“ dieses Programm hinzufügen (im Dateidialog Cmd+Shift+G für den Pfad):
+  $(realpath "$program")
+und danach das Script erneut ausführen. Nach einem brew upgrade die Freigabe erneuern.
+HINT
+  return 1
 }
