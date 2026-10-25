@@ -11,7 +11,7 @@
     <string>@@MUSIC_ROOT@@/navidrome/navidrome.toml</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>@@MUSIC_ROOT@@/navidrome</string>
+  <string>@@HOME@@</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
@@ -31,8 +31,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>@@MUSIC_ROOT@@/logs/navidrome.log</string>
+  <string>@@SERVICE_LOGS@@/navidrome.log</string>
   <key>StandardErrorPath</key>
-  <string>@@MUSIC_ROOT@@/logs/navidrome.log</string>
+  <string>@@SERVICE_LOGS@@/navidrome.log</string>
 </dict>
 </plist>

@@ -9,11 +9,13 @@
     <string>@@MUSIC_ROOT@@/app/Tonregal.Web</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>@@MUSIC_ROOT@@/app</string>
+  <string>@@HOME@@</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>ASPNETCORE_URLS</key>
     <string>http://@@TAILSCALE_IP@@:5100</string>
+    <key>ASPNETCORE_CONTENTROOT</key>
+    <string>@@MUSIC_ROOT@@/app</string>
     <key>ASPNETCORE_ENVIRONMENT</key>
     <string>Production</string>
     <key>Tonregal__MusicRoot</key>
@@ -35,8 +37,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>@@MUSIC_ROOT@@/logs/tonregal.stdout.log</string>
+  <string>@@SERVICE_LOGS@@/tonregal.stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>@@MUSIC_ROOT@@/logs/tonregal.stdout.log</string>
+  <string>@@SERVICE_LOGS@@/tonregal.stdout.log</string>
 </dict>
 </plist>

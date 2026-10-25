@@ -85,6 +85,13 @@ Baut die App inklusive SPA self-contained für `osx-arm64`, kopiert sie nach `ap
 `de.bvelop.tonregal` auf Port 5100 ein. Eigene Einstellungen und API-Keys gehören in
 `/Volumes/T7/Musik/app/appsettings.Production.json`, nie ins Repo.
 
+**Zugriff auf die T7:** launchd selbst darf keine Dateien auf externen Volumes öffnen, deshalb
+liegen nur die Konsolen-Logs der Dienste (`navidrome.log`, `tonregal.stdout.log`) intern unter
+`~/Library/Logs/Tonregal`. Die Programme brauchen für die T7 Festplattenvollzugriff: Startet ein
+Dienst nicht, nennt das Script den Programmpfad; diesen unter Systemeinstellungen → Datenschutz &
+Sicherheit → Festplattenvollzugriff hinzufügen und das Script erneut ausführen. Nach `brew upgrade navidrome`
+ändert sich der Pfad, dann die Freigabe erneuern.
+
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf
 `/Volumes/T7/Musik/.tonregal-mount`), und starten nach einem Remount von selbst neu.
 

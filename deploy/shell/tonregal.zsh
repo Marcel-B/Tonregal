@@ -25,7 +25,7 @@ tonregal-log() {
   local service="${1:-tonregal}"
   case "$service" in
     tonregal) _tonregal_run "tail -n 200 -f $TONREGAL_MUSIC_ROOT/logs/tonregal-\$(date +%Y%m%d).log" ;;
-    navidrome) _tonregal_run "tail -n 200 -f $TONREGAL_MUSIC_ROOT/logs/navidrome.log" ;;
+    navidrome) _tonregal_run "tail -n 200 -f \$HOME/Library/Logs/Tonregal/navidrome.log" ;;
     *) echo "Aufruf: tonregal-log [tonregal|navidrome]" >&2; return 1 ;;
   esac
 }

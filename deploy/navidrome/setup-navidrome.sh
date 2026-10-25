@@ -28,9 +28,10 @@ render_template "$DEPLOY_DIR/navidrome/navidrome.toml.template" "$MUSIC_ROOT/nav
 
 plist="$(mktemp)"
 render_template "$DEPLOY_DIR/launchd/org.navidrome.server.plist.template" "$plist" \
-  MUSIC_ROOT="$MUSIC_ROOT" NAVIDROME_BIN="$brew_prefix/bin/navidrome" BREW_PREFIX="$brew_prefix"
+  MUSIC_ROOT="$MUSIC_ROOT" NAVIDROME_BIN="$brew_prefix/bin/navidrome" BREW_PREFIX="$brew_prefix" \
+  HOME="$HOME" SERVICE_LOGS="$SERVICE_LOGS"
 plutil -lint "$plist" >/dev/null
-install_agent org.navidrome.server "$plist"
+install_agent org.navidrome.server "$plist" "$brew_prefix/bin/navidrome" "$SERVICE_LOGS/navidrome.log"
 rm -f "$plist"
 
 echo
