@@ -166,7 +166,7 @@ async function showCandidates(job: ImportJob) {
               :title="`${data.candidateCount} Kandidaten`"
               @click="showCandidates(data)"
             />
-            <Button v-if="data.error" icon="pi pi-replay" text rounded size="small" aria-label="Erneut versuchen" title="Erneut versuchen" @click="retry(data)" />
+            <Button v-if="data.error || data.state === 'NeedsReview'" icon="pi pi-replay" text rounded size="small" aria-label="Erneut abgleichen" title="Erneut abgleichen" @click="retry(data)" />
           </div>
         </template>
       </Column>
