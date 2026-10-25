@@ -47,6 +47,13 @@ install_agent() {
   mkdir -p "$LAUNCH_AGENTS" "$SERVICE_LOGS"
   cp "$plist" "$LAUNCH_AGENTS/$label.plist"
   launchctl bootout "$domain/$label" 2>/dev/null || true
+  # bootout kehrt zurück, bevor der alte Prozess beendet ist; ein sofortiges bootstrap
+  # scheitert dann mit "5: Input/output error". Also warten, bis der Dienst weg ist.
+  local i
+  for i in {1..20}; do
+    launchctl print "$domain/$label" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
   launchctl bootstrap "$domain" "$LAUNCH_AGENTS/$label.plist"
   launchctl kickstart -k "$domain/$label"
 
