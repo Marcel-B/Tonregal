@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tonregal.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

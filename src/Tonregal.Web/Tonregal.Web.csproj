@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <ClientAppRoot>ClientApp/</ClientAppRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tonregal.Infrastructure\Tonregal.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="$(ClientAppRoot)**" />
+    <None Remove="$(ClientAppRoot)**" />
+    <None Include="$(ClientAppRoot)**" Exclude="$(ClientAppRoot)node_modules/**" />
+  </ItemGroup>
+
+  <!-- Beim Publish die Vue-SPA bauen; Vite schreibt nach wwwroot. -->
+  <Target Name="BuildClientApp" BeforeTargets="ComputeFilesToPublish" Condition="'$(SkipClientApp)' != 'true'">
+    <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm ci" />
+    <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm run build" />
+    <ItemGroup>
+      <ClientDist Include="wwwroot/**" />
+      <ResolvedFileToPublish Include="@(ClientDist->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>wwwroot/%(ClientDist.RecursiveDir)%(ClientDist.Filename)%(ClientDist.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+</Project>

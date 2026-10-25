@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.navidrome.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@@NAVIDROME_BIN@@</string>
+    <string>--configfile</string>
+    <string>@@MUSIC_ROOT@@/navidrome/navidrome.toml</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>@@MUSIC_ROOT@@/navidrome</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@@BREW_PREFIX@@/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <!-- Nur laufen, solange die T7 gemountet ist; nach einem Remount startet launchd den Dienst neu. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>PathState</key>
+    <dict>
+      <key>@@MUSIC_ROOT@@/.tonregal-mount</key>
+      <true/>
+    </dict>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>@@MUSIC_ROOT@@/logs/navidrome.log</string>
+  <key>StandardErrorPath</key>
+  <string>@@MUSIC_ROOT@@/logs/navidrome.log</string>
+</dict>
+</plist>

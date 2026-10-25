@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tonregal.Application/Tonregal.Application.csproj" />
+    <Project Path="src/Tonregal.Domain/Tonregal.Domain.csproj" />
+    <Project Path="src/Tonregal.Infrastructure/Tonregal.Infrastructure.csproj" />
+    <Project Path="src/Tonregal.Web/Tonregal.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tonregal.Tests/Tonregal.Tests.csproj" />
+  </Folder>
+</Solution>

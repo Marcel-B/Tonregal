@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/Tonregal.Web/ClientApp/package-lock.json
+
+      - name: Client bauen und testen
+        working-directory: src/Tonregal.Web/ClientApp
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: .NET bauen und testen
+        run: |
+          dotnet build -c Release
+          dotnet test -c Release --no-build

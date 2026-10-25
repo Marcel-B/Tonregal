@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>de.bvelop.tonregal</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@@MUSIC_ROOT@@/app/Tonregal.Web</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>@@MUSIC_ROOT@@/app</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>ASPNETCORE_URLS</key>
+    <string>http://@@TAILSCALE_IP@@:5100</string>
+    <key>ASPNETCORE_ENVIRONMENT</key>
+    <string>Production</string>
+    <key>Tonregal__MusicRoot</key>
+    <string>@@MUSIC_ROOT@@</string>
+    <key>PATH</key>
+    <string>@@BREW_PREFIX@@/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <!-- Wie bei Navidrome: nur mit gemounteter T7, sonst entstünden Library und DB auf der internen Platte. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>PathState</key>
+    <dict>
+      <key>@@MUSIC_ROOT@@/.tonregal-mount</key>
+      <true/>
+    </dict>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>@@MUSIC_ROOT@@/logs/tonregal.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>@@MUSIC_ROOT@@/logs/tonregal.stdout.log</string>
+</dict>
+</plist>

@@ -1,0 +1,103 @@
+# Tonregal
+
+Tonregal verwaltet die eigene Musikbibliothek auf oi-o-mat: Inbox überwachen, Fingerprint,
+MusicBrainz-Abgleich, Cover, Tags schreiben, Dateien in eine feste Ordnerstruktur einsortieren,
+Dubletten erkennen, BPM/Tonart/ReplayGain analysieren und alles nach Nextcloud sichern.
+Gestreamt wird die fertige Library von [Navidrome](https://www.navidrome.org/) über die
+Subsonic-API ins Tailnet.
+
+**Leitprinzip:** Die Dateien sind die Wahrheit. Alle Metadaten stehen in den Tags der Audiodatei,
+die Datenbank ist nur ein Index und lässt sich jederzeit aus der Library neu aufbauen.
+
+## Aufbau
+
+| Projekt | Inhalt |
+|---|---|
+| `src/Tonregal.Domain` | Entities, Value Objects (`TrackKey`, `TrackIdentity`, `LibraryPath`), keine Abhängigkeiten |
+| `src/Tonregal.Application` | Use Cases und Schnittstellen für Tagging, Fingerprint, Metadaten-Lookup |
+| `src/Tonregal.Infrastructure` | EF Core + SQLite, später TagLib-, fpcalc-, MusicBrainz-, rclone-Adapter |
+| `src/Tonregal.Web` | ASP.NET-Core-Host: Minimal-API unter `/api`, SignalR-Hub unter `/hub`, liefert die Vue-SPA aus |
+| `src/Tonregal.Web/ClientApp` | Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind CSS, PrimeVue 4 |
+| `tests/Tonregal.Tests` | xUnit v3 (Domain, Datenbank, API); UI-Tests mit Vitest in der ClientApp |
+| `deploy/` | Setup- und Deploy-Scripts, launchd-Vorlagen, Shell-Funktionen für oi-o-mat |
+
+Ordnerregel der Library: `Library/{AlbumArtist}/{Year} - {Album}/{Disc-}{NN} - {Title}.{ext}`,
+Compilations unter `Library/Various Artists/…`.
+
+## Entwicklung
+
+Voraussetzungen: .NET 10 SDK, Node.js 22.
+
+```bash
+# Backend (Development-Profil, Musikordner unter .dev/Musik im Repo)
+dotnet run --project src/Tonregal.Web          # http://localhost:5100
+
+# Frontend mit Hot Reload, /api und /hub gehen per Proxy an das Backend
+cd src/Tonregal.Web/ClientApp
+npm install
+npm run dev                                    # http://localhost:5173
+
+# Tests
+dotnet test
+(cd src/Tonregal.Web/ClientApp && npm test)
+```
+
+Neue Migration:
+
+```bash
+dotnet tool restore
+dotnet ef migrations add <Name> -p src/Tonregal.Infrastructure -s src/Tonregal.Infrastructure -o Persistence/Migrations
+```
+
+Die App migriert die Datenbank beim Start selbst.
+
+## Betrieb auf oi-o-mat
+
+Alles liegt unter `/Volumes/T7/Musik` und ist nur über die Tailscale-IP erreichbar.
+
+| Pfad | Inhalt |
+|---|---|
+| `Inbox/` | neue Käufe und alte MP3-Kopien (Unterordner = Album-Kandidat) |
+| `Library/` | fertige Bibliothek, schreibt nur Tonregal |
+| `app/` | veröffentlichte App und `tonregal.db` |
+| `navidrome/` | `navidrome.toml`, `navidrome.db`, Cache |
+| `logs/` | Logs von Tonregal und Navidrome |
+
+### Stufe 0: Navidrome
+
+```bash
+./deploy/navidrome/setup-navidrome.sh
+```
+
+Installiert Navidrome und ffmpeg per Homebrew, legt die Ordner an, schreibt `navidrome.toml`
+(Library-Ordner, Bind an die Tailscale-IP, Port 4533, Scan alle 15 Minuten) und richtet den
+launchd-Dienst `org.navidrome.server` ein. Danach im Browser den Admin-Benutzer anlegen und
+Amperfy (iPhone) bzw. play:Sub (Mac) mit `http://oi-o-mat.tail6105c0.ts.net:4533` verbinden.
+
+### Tonregal
+
+```bash
+./deploy/deploy-tonregal.sh
+```
+
+Baut die App inklusive SPA self-contained für `osx-arm64`, kopiert sie nach `app/` (Datenbank und
+`appsettings.Production.json` bleiben erhalten) und richtet den launchd-Dienst
+`de.bvelop.tonregal` auf Port 5100 ein. Eigene Einstellungen und API-Keys gehören in
+`/Volumes/T7/Musik/app/appsettings.Production.json`, nie ins Repo.
+
+Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf
+`/Volumes/T7/Musik/.tonregal-mount`), und starten nach einem Remount von selbst neu.
+
+Shell-Funktionen für beide Macs:
+
+```bash
+source deploy/shell/tonregal.zsh   # in ~/.zshrc
+tonregal-status
+tonregal-log [tonregal|navidrome]
+tonregal-restart [tonregal|navidrome]
+```
+
+## Lizenz
+
+[GNU Affero General Public License v3.0 oder später](LICENSE). Navidrome, Chromaprint, ffmpeg,
+rsgain und rclone werden nur als eigenständige Prozesse aufgerufen, nicht gelinkt.
