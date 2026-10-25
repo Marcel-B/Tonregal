@@ -86,4 +86,21 @@ public sealed class LibraryApiTests : IDisposable
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Tools_und_Abgleich_ohne_AcoustId_Key()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await WaitForScanAsync();
+
+        var tools = await _client.GetFromJsonAsync<ToolStatus>("/api/tools", Json, ct);
+        Assert.Contains("fpcalc", tools!.Fpcalc);
+        Assert.False(tools.AcoustIdConfigured);
+
+        var album = await _client.GetFromJsonAsync<AlbumDetail>("/api/library/albums/1", Json, ct);
+        var fileId = album!.Tracks[0].Files[0].Id;
+        var response = await _client.GetAsync($"/api/library/files/{fileId}/candidates", ct);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Contains("API-Key fehlt", await response.Content.ReadAsStringAsync(ct));
+    }
 }

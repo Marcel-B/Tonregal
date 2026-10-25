@@ -93,9 +93,43 @@ export interface ScanStatus {
   lastError: string | null
 }
 
+export interface RecordingCandidate {
+  recordingId: string
+  acoustId: string | null
+  title: string
+  artists: string[]
+  durationMs: number | null
+  releaseId: string | null
+  releaseGroupId: string | null
+  releaseTitle: string | null
+  releaseArtist: string | null
+  releaseType: string | null
+  releaseStatus: string | null
+  year: number | null
+  disc: number | null
+  trackNumber: number | null
+  trackCount: number | null
+  score: number
+}
+
+export interface MatchResponse {
+  fileId: number
+  durationSeconds: number
+  candidates: RecordingCandidate[]
+}
+
+export interface ToolStatus {
+  fpcalc: string | null
+  acoustIdConfigured: boolean
+}
+
 async function request<T>(method: string, path: string): Promise<T> {
   const response = await fetch(`/api${path}`, { method, headers: { Accept: 'application/json' } })
-  if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`)
+  if (!response.ok) {
+    // ProblemDetails der API tragen die eigentliche Fehlermeldung in "detail".
+    const problem = await response.json().catch(() => null)
+    throw new Error(problem?.detail ?? `${path}: HTTP ${response.status}`)
+  }
   return (await response.json()) as T
 }
 
@@ -110,6 +144,8 @@ export const api = {
   coverUrl: (albumId: number) => `/api/library/albums/${albumId}/cover`,
   scanStatus: () => get<ScanStatus>('/library/scan'),
   startScan: () => request<ScanStatus>('POST', '/library/scan'),
+  tools: () => get<ToolStatus>('/tools'),
+  candidates: (fileId: number) => get<MatchResponse>(`/library/files/${fileId}/candidates`),
 }
 
 export function formatDuration(ms: number): string {

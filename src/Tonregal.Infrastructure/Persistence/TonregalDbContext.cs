@@ -18,6 +18,7 @@ public class TonregalDbContext(DbContextOptions<TonregalDbContext> options) : Db
     public DbSet<DuplicateGroup> DuplicateGroups => Set<DuplicateGroup>();
     public DbSet<AnalysisResult> AnalysisResults => Set<AnalysisResult>();
     public DbSet<BackupRun> BackupRuns => Set<BackupRun>();
+    public DbSet<MetadataCacheEntry> MetadataCache => Set<MetadataCacheEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(TonregalDbContext).Assembly);

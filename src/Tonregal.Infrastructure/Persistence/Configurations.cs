@@ -99,3 +99,14 @@ internal sealed class BackupRunConfiguration : IEntityTypeConfiguration<BackupRu
 {
     public void Configure(EntityTypeBuilder<BackupRun> b) => b.HasIndex(x => x.StartedAt);
 }
+
+internal sealed class MetadataCacheEntryConfiguration : IEntityTypeConfiguration<MetadataCacheEntry>
+{
+    public void Configure(EntityTypeBuilder<MetadataCacheEntry> b)
+    {
+        b.ToTable("MetadataCache");
+        b.HasKey(x => x.Key);
+        b.Property(x => x.Key).HasMaxLength(128);
+        b.Property(x => x.Json).IsRequired();
+    }
+}

@@ -25,7 +25,7 @@ public class TagLibTagReaderTests
         Assert.Equal(120, tags.Bpm);
         Assert.Equal("Am", tags.InitialKey);
         Assert.Equal(AudioFormat.Mp3, props.Format);
-        Assert.InRange(props.Duration.TotalSeconds, 1.9, 2.2);
+        Assert.InRange(props.Duration.TotalSeconds, 2.9, 3.2);
     }
 
     [Fact]

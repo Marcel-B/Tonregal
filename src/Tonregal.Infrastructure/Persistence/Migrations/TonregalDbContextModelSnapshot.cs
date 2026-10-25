@@ -328,6 +328,24 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.ToTable("ImportJobs");
                 });
 
+            modelBuilder.Entity("Tonregal.Domain.Entities.MetadataCacheEntry", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("FetchedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("MetadataCache", (string)null);
+                });
+
             modelBuilder.Entity("Tonregal.Domain.Entities.Track", b =>
                 {
                     b.Property<int>("Id")

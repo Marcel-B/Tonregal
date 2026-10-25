@@ -15,6 +15,9 @@ app="$MUSIC_ROOT/app"
 staging="$(mktemp -d)"
 trap 'rm -rf "$staging"' EXIT
 
+echo "==> Homebrew-Pakete"
+brew list chromaprint >/dev/null 2>&1 || brew install chromaprint
+
 echo "==> dotnet publish"
 dotnet publish "$repo/src/Tonregal.Web" -c Release -r osx-arm64 --self-contained -o "$staging"
 

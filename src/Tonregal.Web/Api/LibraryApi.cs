@@ -116,7 +116,7 @@ public static class LibraryApi
     }
 
     /// <summary>Löst einen Library-relativen Pfad auf und verhindert, dass er aus der Library herausführt.</summary>
-    private static string? ResolveInside(string root, string? relative)
+    internal static string? ResolveInside(string root, string? relative)
     {
         if (string.IsNullOrEmpty(relative))
             return null;
