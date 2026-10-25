@@ -2,11 +2,10 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import Dialog from 'primevue/dialog'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
-import { api, formatDuration, type FileDto, type MatchResponse, type RecordingCandidate, type TrackDto } from '@/api'
+import CandidateTable from '@/components/CandidateTable.vue'
+import { api, type FileDto, type MatchResponse, type TrackDto } from '@/api'
 
 /** Zeigt, was AcoustID und MusicBrainz zu einer Datei finden – ohne etwas zu ändern. */
 const props = defineProps<{ track: TrackDto | null; file: FileDto | null }>()
@@ -33,13 +32,6 @@ watch(
   },
   { immediate: true },
 )
-
-// Ausgaben desselben Albums unterscheiden sich meist nur in Datum, Land und Medium.
-const releaseDetails = (c: RecordingCandidate) =>
-  [c.releaseArtist, c.releaseDate ?? c.year, c.country, c.mediumFormat].filter(Boolean).join(' · ')
-const percent = (score: number) => `${Math.round(score * 100)} %`
-const position = (c: { disc: number | null; trackNumber: number | null; trackCount: number | null }) =>
-  c.trackNumber ? `${c.disc && c.disc > 1 ? `${c.disc}-` : ''}${c.trackNumber}${c.trackCount ? `/${c.trackCount}` : ''}` : ''
 </script>
 
 <template>
@@ -52,32 +44,7 @@ const position = (c: { disc: number | null; trackNumber: number | null; trackCou
     <Message v-else-if="error" severity="error">{{ error }}</Message>
     <template v-else-if="result">
       <Message v-if="result.candidates.length === 0" severity="info">AcoustID kennt diese Aufnahme nicht.</Message>
-      <DataTable v-else :value="result.candidates" size="small" scrollable scroll-height="60vh">
-        <Column header="Score" class="w-20 tabular-nums">
-          <template #body="{ data }">{{ percent(data.score) }}</template>
-        </Column>
-        <Column header="Titel">
-          <template #body="{ data }">
-            <a :href="`https://musicbrainz.org/recording/${data.recordingId}`" target="_blank" rel="noopener" class="hover:underline" data-testid="candidate-title">{{ data.title }}</a>
-            <div class="text-sm text-surface-500">{{ data.artists.join(', ') }}</div>
-          </template>
-        </Column>
-        <Column header="Release">
-          <template #body="{ data }">
-            <a v-if="data.releaseId" :href="`https://musicbrainz.org/release/${data.releaseId}`" target="_blank" rel="noopener" class="hover:underline">{{ data.releaseTitle }}</a>
-            <div class="text-sm text-surface-500">{{ releaseDetails(data) }}</div>
-          </template>
-        </Column>
-        <Column header="Typ" class="w-28">
-          <template #body="{ data }">{{ data.releaseType ?? '' }}<span v-if="data.releaseStatus && data.releaseStatus !== 'Official'" class="text-surface-500"> ({{ data.releaseStatus }})</span></template>
-        </Column>
-        <Column header="Track" class="w-20 tabular-nums">
-          <template #body="{ data }">{{ position(data) }}</template>
-        </Column>
-        <Column header="Dauer" class="w-20 tabular-nums">
-          <template #body="{ data }">{{ data.durationMs ? formatDuration(data.durationMs) : '' }}</template>
-        </Column>
-      </DataTable>
+      <CandidateTable v-else :candidates="result.candidates" />
     </template>
   </Dialog>
 </template>

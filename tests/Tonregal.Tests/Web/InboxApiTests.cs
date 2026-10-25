@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Tonregal.Domain.Entities;
+using Tonregal.Web.Api;
+using Tonregal.Web.Inbox;
+
+namespace Tonregal.Tests.Web;
+
+/// <summary>Echte Pipeline mit fpcalc, aber ohne AcoustID-Key: Jobs bleiben nach dem Fingerprint stehen.</summary>
+public sealed class InboxApiTests : IDisposable
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
+
+    private readonly TestLibrary _library = new(populate: false);
+    private readonly WebApplicationFactory<Program> _factory;
+    private readonly HttpClient _client;
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    public InboxApiTests()
+    {
+        _library.Copy("song1.mp3", Path.Combine(_library.MusicRoot, "Inbox", "Testalbum"), "01.mp3");
+        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
+            .UseEnvironment("Testing")
+            .UseSetting("Tonregal:MusicRoot", _library.MusicRoot)
+            .UseSetting("Tonregal:InboxStableSeconds", "0")
+            .UseSetting("Tonregal:Metadata:AcoustIdApiKey", ""));
+        _client = _factory.CreateClient();
+    }
+
+    public void Dispose()
+    {
+        _client.Dispose();
+        _factory.Dispose();
+        _library.Dispose();
+    }
+
+    private async Task<InboxStatus> WaitForRunAsync()
+    {
+        var service = _factory.Services.GetRequiredService<InboxService>();
+        for (var i = 0; i < 200 && (service.Status.LastRunAt is null || service.Status.Running); i++)
+            await Task.Delay(50, Ct);
+        Assert.NotNull(service.Status.LastRunAt);
+        return service.Status;
+    }
+
+    [Fact]
+    public async Task Inbox_listet_Jobs_und_meldet_fehlenden_Key()
+    {
+        var status = await WaitForRunAsync();
+
+        Assert.Contains("API-Key", status.LastError);
+        var inbox = await _client.GetFromJsonAsync<InboxResponse>("/api/inbox", Json, Ct);
+        var job = Assert.Single(inbox!.Jobs);
+        Assert.Equal(("Testalbum/01.mp3", "Testalbum"), (job.Path, job.Group));
+        Assert.Equal(ImportState.Fingerprinted, job.State);
+        Assert.Equal("Erster Song", job.TagTitle);
+        Assert.Contains("API-Key", job.Error);
+        Assert.Null(job.Selected);
+
+        var candidates = await _client.GetFromJsonAsync<ImportJobCandidates>($"/api/inbox/{job.Id}/candidates", Json, Ct);
+        Assert.Empty(candidates!.Candidates);
+    }
+
+    [Fact]
+    public async Task Retry_setzt_den_Job_zurueck()
+    {
+        await WaitForRunAsync();
+        var job = (await _client.GetFromJsonAsync<InboxResponse>("/api/inbox", Json, Ct))!.Jobs[0];
+
+        var response = await _client.PostAsync($"/api/inbox/{job.Id}/retry", null, Ct);
+        var missing = await _client.PostAsync("/api/inbox/999/retry", null, Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(ImportState.New, (await response.Content.ReadFromJsonAsync<ImportJobDto>(Json, Ct))!.State);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+}

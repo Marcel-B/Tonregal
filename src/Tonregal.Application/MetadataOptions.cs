@@ -20,4 +20,7 @@ public sealed class MetadataOptions
 
     /// <summary>AcoustID-Treffer unter diesem Score werden verworfen.</summary>
     public double MinimumScore { get; set; } = 0.5;
+
+    /// <summary>Ab diesem Score wird ein eindeutiger Treffer ohne Review übernommen.</summary>
+    public double AutoMatchScore { get; set; } = 0.9;
 }

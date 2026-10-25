@@ -108,6 +108,13 @@ Für AcoustID braucht es einen kostenlosen Client-Key von https://acoustid.org/n
 MusicBrainz-Antworten werden 30 Tage in der Datenbank gecacht; Anfragen sind auf 1/s (MusicBrainz)
 bzw. 3/s (AcoustID) begrenzt.
 
+**Inbox:** Tonregal überwacht `/Volumes/T7/Musik/Inbox` (plus Vollscan beim Start und alle 5 Minuten).
+Eine Datei wird eingelesen, sobald ihre Größe 10 s stabil ist; ein Unterordner gilt als ein Album.
+Jede Datei bekommt einen Import-Job: Tags, Hash und Fingerprint, dann AcoustID und MusicBrainz.
+Ein eindeutiger Treffer ab 90 % ohne Widerspruch zu den Tags ist *Erkannt*, alles andere landet mit
+Begründung unter *Prüfen*. Stimmt die Mehrheit der Dateien eines Ordners auf ein Release, bekommen alle
+dieses Release. Die Dateien in der Inbox werden dabei noch nicht verändert oder verschoben.
+
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf
 `/Volumes/T7/Musik/.tonregal-mount`), und starten nach einem Remount von selbst neu.
 
