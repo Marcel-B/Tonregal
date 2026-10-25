@@ -43,6 +43,7 @@ public sealed class TagLibTagWriterTests : IDisposable
     [InlineData("song2.flac")]
     [InlineData("song3.m4a")]
     [InlineData("song4.opus")]
+    [InlineData("song5-riff.mp3")]
     public void Schreibt_Tags_die_der_Reader_wieder_liest(string testFile)
     {
         var path = _library.Copy(testFile, _library.MusicRoot, testFile);
@@ -63,6 +64,21 @@ public sealed class TagLibTagWriterTests : IDisposable
         // Was Tonregal nicht kennt, bleibt stehen.
         Assert.Equal(before.Bpm, tags.Bpm);
         Assert.Equal(before.Genre, tags.Genre);
+    }
+
+    [Fact]
+    public async Task MP3_in_WAV_Huelle_bleibt_nach_dem_Schreiben_fingerprintbar()
+    {
+        // Alte Ripper: ID3-Tag, dahinter RIFF/WAVE mit MP3-Daten (siehe FpcalcFingerprintService).
+        var path = _library.Copy("song5-riff.mp3", _library.MusicRoot, "riff.mp3");
+        var fpcalc = new Tonregal.Infrastructure.Fingerprinting.FpcalcFingerprintService(
+            Microsoft.Extensions.Options.Options.Create(new Tonregal.Application.MetadataOptions()), _reader);
+        var before = await fpcalc.ComputeAsync(path, TestContext.Current.CancellationToken);
+
+        _writer.Write(path, Track(), null);
+
+        var after = await fpcalc.ComputeAsync(path, TestContext.Current.CancellationToken);
+        Assert.Equal(before.Value, after.Value);
     }
 
     [Fact]
