@@ -1,0 +1,23 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+.idea/
+TestResults/
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Lokale Entwicklungsdaten (MusicRoot im Development-Profil)
+.dev/
+
+# Frontend
+node_modules/
+src/Tonregal.Web/wwwroot/
+*.tsbuildinfo
+
+# macOS
+.DS_Store

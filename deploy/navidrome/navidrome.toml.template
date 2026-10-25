@@ -1,0 +1,13 @@
+# Erzeugt von deploy/navidrome/setup-navidrome.sh – Änderungen dort bzw. in der Vorlage machen.
+MusicFolder = "@@MUSIC_ROOT@@/Library"
+DataFolder = "@@MUSIC_ROOT@@/navidrome"
+CacheFolder = "@@MUSIC_ROOT@@/navidrome/cache"
+Address = "@@TAILSCALE_IP@@"
+Port = 4533
+LogLevel = "info"
+# Tonregal ist die Quelle der Wahrheit für Tags; Navidrome liest nur.
+CoverArtPriority = "cover.*, folder.*, front.*, embedded, external"
+EnableExternalServices = false
+
+[Scanner]
+Schedule = "@every 15m"
