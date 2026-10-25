@@ -3,6 +3,11 @@
 
 MUSIC_ROOT="${MUSIC_ROOT:-/Volumes/T7/Musik}"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
+# launchd öffnet StandardOutPath und WorkingDirectory selbst, bevor das Programm startet, und
+# darf das auf externen Volumes nicht (EX_CONFIG 78, "Operation not permitted"); eine
+# Festplattenvollzugriff-Freigabe für das Programm hilft dabei nicht. Deshalb liegen nur diese
+# kleinen Dienst-Logs intern, alles andere bleibt auf der T7.
+SERVICE_LOGS="$HOME/Library/Logs/Tonregal"
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 require_mount() {
@@ -39,7 +44,7 @@ render_template() {
 # install_agent <label> <plist-datei> <programm> <logdatei>
 install_agent() {
   local label="$1" plist="$2" program="$3" log="$4" domain="gui/$(id -u)"
-  mkdir -p "$LAUNCH_AGENTS"
+  mkdir -p "$LAUNCH_AGENTS" "$SERVICE_LOGS"
   cp "$plist" "$LAUNCH_AGENTS/$label.plist"
   launchctl bootout "$domain/$label" 2>/dev/null || true
   launchctl bootstrap "$domain" "$LAUNCH_AGENTS/$label.plist"
@@ -56,8 +61,8 @@ install_agent() {
   [[ -f "$log" ]] && tail -n 10 "$log" >&2
   cat >&2 <<HINT
 
-Meist fehlt die Freigabe für die externe SSD: launchd darf ohne sie keine Dateien
-auf der T7 öffnen und bricht mit EX_CONFIG (78) ab. Unter
+Steht im Log "Operation not permitted", fehlt dem Programm die Freigabe für die
+externe SSD. Unter
   Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff
 mit „+“ dieses Programm hinzufügen (im Dateidialog Cmd+Shift+G für den Pfad):
   $(realpath "$program")
