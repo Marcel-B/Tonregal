@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -18,7 +19,7 @@ namespace Tonregal.Infrastructure.Import;
 /// MusicBrainz → <see cref="ImportState.Matched"/> oder <see cref="ImportState.NeedsReview"/>.
 /// Die Dateien in der Inbox werden dabei nicht verändert.
 /// </summary>
-public sealed class InboxImporter(
+public sealed partial class InboxImporter(
     TonregalDbContext db,
     ITagReader tagReader,
     IFingerprintService fingerprints,
@@ -184,9 +185,12 @@ public sealed class InboxImporter(
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>Abweichung zwischen Datei und Aufnahme, ab der ein Kandidat nicht mehr in Frage kommt.</summary>
+    private static readonly TimeSpan DurationTolerance = TimeSpan.FromSeconds(15);
+
     /// <summary>
-    /// Matched nur bei hohem Score, genau einer Aufnahme (Titel/Artist) unter den guten Treffern
-    /// und ohne Widerspruch zu den Tags; sonst Review mit Begründung und Vorschlag.
+    /// Matched nur bei hohem Score, ohne Widerspruch zu den Tags und, wenn die Tags keinen Titel
+    /// haben, mit genau einer Aufnahme unter den guten Treffern; sonst Review mit Begründung und Vorschlag.
     /// </summary>
     internal static void Decide(ImportJob job, AudioTags tags, IReadOnlyList<RecordingCandidate> candidates, double autoMatchScore)
     {
@@ -203,17 +207,24 @@ public sealed class InboxImporter(
 
         var bestScore = candidates.Max(c => c.Score);
         job.MatchScore = bestScore;
-        var good = candidates.Where(c => c.Score >= Math.Min(autoMatchScore, bestScore)).ToList();
+        var good = Good(candidates, bestScore, autoMatchScore, job.DurationMs);
+        var durationMismatch = good.Count == 0;
+        if (durationMismatch)
+            good = candidates.Where(c => c.Score >= Math.Min(autoMatchScore, bestScore)).ToList();
 
-        // Vorhandene MusicBrainz-IDs in den Tags haben Vorrang (Altbestand aus Picard o. Ä.).
+        // Vorhandene MusicBrainz-IDs in den Tags haben Vorrang (Altbestand aus Picard o. Ä.), danach
+        // Titel und Artist aus den Tags: AcoustID hängt an manchen Fingerprints auch fremde Songs.
         var selected = good.FirstOrDefault(c => tags.MusicBrainzReleaseId is { } r && c.ReleaseId == r
                 && (tags.MusicBrainzRecordingId is not { } rec || c.RecordingId == rec))
             ?? good.FirstOrDefault(c => tags.MusicBrainzRecordingId is { } rec && c.RecordingId == rec)
+            ?? good.FirstOrDefault(c => MatchesTags(c, tags))
             ?? good[0];
         job.SelectedRecordingId = selected.RecordingId;
         job.SelectedReleaseId = selected.ReleaseId;
 
-        job.ReviewReason = ReviewReason(tags, good, selected, bestScore, autoMatchScore);
+        job.ReviewReason = durationMismatch
+            ? $"Dauer {FormatDuration(job.DurationMs)} passt zu keinem Treffer"
+            : ReviewReason(tags, good, selected, bestScore, autoMatchScore);
         job.State = job.ReviewReason is null ? ImportState.Matched : ImportState.NeedsReview;
     }
 
@@ -222,14 +233,31 @@ public sealed class InboxImporter(
     {
         if (bestScore < autoMatchScore)
             return $"Score {bestScore:P0} unter {autoMatchScore:P0}";
-        if (good.FirstOrDefault(c => !SameSong(c, selected)) is { } other)
-            return $"Fingerprint passt auch zu „{other.Title}“ von {string.Join(", ", other.Artists)}";
         if (tags.MusicBrainzRecordingId is { } recording && good.All(c => c.RecordingId != recording))
             return "MusicBrainz-ID in den Tags passt nicht zum Fingerprint";
-        if (tags.Title is { } title && !SameTitle(title, selected.Title))
-            return $"Titel in den Tags weicht ab: „{title}“";
-        return null;
+        if (tags.Title is { } title)
+            return MatchesTags(selected, tags) ? null : $"Tags passen zu keinem Treffer: „{title}“";
+
+        // Ohne Titel in den Tags entscheidet nur der Fingerprint; dann muss er eindeutig sein.
+        return good.FirstOrDefault(c => !SameSong(c, selected)) is { } other
+            ? $"Fingerprint passt auch zu „{other.Title}“ von {string.Join(", ", other.Artists)}"
+            : null;
     }
+
+    /// <summary>Kandidaten mit gutem Score, deren Länge zur Datei passt.</summary>
+    internal static List<RecordingCandidate> Good(
+        IReadOnlyList<RecordingCandidate> candidates, double bestScore, double autoMatchScore, int fileDurationMs) =>
+        candidates
+            .Where(c => c.Score >= Math.Min(autoMatchScore, bestScore))
+            .Where(c => fileDurationMs <= 0 || c.DurationMs is not { } length
+                || Math.Abs(length - fileDurationMs) <= DurationTolerance.TotalMilliseconds)
+            .ToList();
+
+    private static bool MatchesTags(RecordingCandidate c, AudioTags tags) =>
+        tags.Title is { } title && SameTitle(title, c.Title)
+        && (tags.Artists.Count == 0 || c.Artists.Count == 0 || tags.Artists.Any(a => c.Artists.Any(b => SameTitle(a, b))));
+
+    private static string FormatDuration(int ms) => $"{ms / 60000}:{ms / 1000 % 60:00}";
 
     /// <summary>
     /// Dateien eines Inbox-Ordners sind ein Album-Kandidat: Steht ein Release bei der Mehrheit der
@@ -282,10 +310,7 @@ public sealed class InboxImporter(
     {
         if (job.Candidates is null || job.MatchScore is not { } best)
             return [];
-        var threshold = Math.Min(AutoMatchScore, best);
-        return (JsonSerializer.Deserialize<List<RecordingCandidate>>(job.Candidates, Json) ?? [])
-            .Where(c => c.Score >= threshold)
-            .ToList();
+        return Good(JsonSerializer.Deserialize<List<RecordingCandidate>>(job.Candidates, Json) ?? [], best, AutoMatchScore, job.DurationMs);
     }
 
     private void Reject(ImportJob job, string reason)
@@ -307,10 +332,14 @@ public sealed class InboxImporter(
     /// <summary>Gleich nach Normalisierung, oder einer enthält den anderen („Song (Remastered 2011)“).</summary>
     internal static bool SameTitle(string a, string b)
     {
-        var x = TrackKey.Normalize(a);
-        var y = TrackKey.Normalize(b);
+        var x = TrackKey.Normalize(DroppedG().Replace(a, "$1ing"));
+        var y = TrackKey.Normalize(DroppedG().Replace(b, "$1ing"));
         return x.Contains(y, StringComparison.Ordinal) || y.Contains(x, StringComparison.Ordinal);
     }
+
+    /// <summary>„Lookin'“ → „Looking“.</summary>
+    [GeneratedRegex(@"(\w)in['’]", RegexOptions.IgnoreCase)]
+    private static partial Regex DroppedG();
 
     private static string ToRelative(string root, string fullPath) =>
         Path.GetRelativePath(root, fullPath).Replace(Path.DirectorySeparatorChar, '/');

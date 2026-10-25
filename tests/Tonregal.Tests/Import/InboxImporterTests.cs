@@ -68,8 +68,8 @@ public sealed class InboxImporterTests : IDisposable
     }
 
     private static RecordingCandidate Candidate(
-        string title, double score, Guid? release = null, Guid? recording = null, string artist = "Testband") =>
-        new(recording ?? Guid.NewGuid(), Guid.NewGuid(), title, [artist], 2000,
+        string title, double score, Guid? release = null, Guid? recording = null, string artist = "Testband", int durationMs = 2000) =>
+        new(recording ?? Guid.NewGuid(), Guid.NewGuid(), title, [artist], durationMs,
             release ?? Guid.NewGuid(), Guid.NewGuid(), "Testalbum", artist, "Album", "Official", 2024,
             1, 1, 3, "2024-03-01", "DE", "CD", score);
 
@@ -129,8 +129,8 @@ public sealed class InboxImporterTests : IDisposable
     [Theory]
     [InlineData("niedrig", "Score 72 % unter 90 %")]
     [InlineData("leer", "AcoustID kennt diese Aufnahme nicht")]
-    [InlineData("mehrdeutig", "Fingerprint passt auch zu „Ganz anderer Song“ von Testband")]
-    [InlineData("titel", "Titel in den Tags weicht ab: „Erster Song“")]
+    [InlineData("titel", "Tags passen zu keinem Treffer: „Erster Song“")]
+    [InlineData("dauer", "Dauer 0:03 passt zu keinem Treffer")]
     [InlineData("mbid", "MusicBrainz-ID in den Tags passt nicht zum Fingerprint")]
     public async Task Unsicherer_Treffer_braucht_Review(string fall, string reason)
     {
@@ -141,7 +141,7 @@ public sealed class InboxImporterTests : IDisposable
         {
             "niedrig" => [Candidate("Erster Song", 0.72)],
             "leer" => [],
-            "mehrdeutig" => [Candidate("Erster Song", 0.95), Candidate("Ganz anderer Song", 0.93)],
+            "dauer" => [Candidate("Erster Song", 0.95, durationMs: 240_000)],
             "mbid" => [Candidate("Zweiter Song", 0.95)],
             _ => [Candidate("Ganz anderer Song", 0.95)],
         };
@@ -152,6 +152,34 @@ public sealed class InboxImporterTests : IDisposable
         Assert.Equal(reason, job.ReviewReason?.Replace(' ', ' '));
         if (fall != "leer")
             Assert.NotNull(job.SelectedRecordingId);
+    }
+
+    [Fact]
+    public async Task Tags_entscheiden_wenn_AcoustID_fremde_Songs_mitliefert()
+    {
+        // AcoustID verknüpft manche Fingerprints auch mit falschen Recordings („Eddie My Love“).
+        Drop("song1.mp3", "01.mp3");
+        _lookup.Results["01.mp3"] =
+        [
+            Candidate("Eddie My Love", 0.98, ReleaseA, artist: "The Chordettes"),
+            Candidate("Erster Song", 0.98, ReleaseB),
+        ];
+
+        var job = Assert.Single(await ProcessAllAsync());
+
+        Assert.Equal(ImportState.Matched, job.State);
+        Assert.Equal(ReleaseB, job.SelectedReleaseId);
+    }
+
+    [Fact]
+    public void Ohne_Titel_in_den_Tags_muss_der_Fingerprint_eindeutig_sein()
+    {
+        var job = new ImportJob { SourcePath = "x.mp3", DurationMs = 2000 };
+
+        InboxImporter.Decide(job, new AudioTags(), [Candidate("Erster Song", 0.95), Candidate("Ganz anderer Song", 0.93)], 0.9);
+
+        Assert.Equal(ImportState.NeedsReview, job.State);
+        Assert.Equal("Fingerprint passt auch zu „Ganz anderer Song“ von Testband", job.ReviewReason);
     }
 
     [Fact]
@@ -258,6 +286,7 @@ public sealed class InboxImporterTests : IDisposable
     [Theory]
     [InlineData("A Victory Of Love", "A Victory of Love", true)]
     [InlineData("Forever Young (Remastered 2019)", "Forever Young", true)]
+    [InlineData("Looking For The Summer", "Lookin' for the Summer", true)]
     [InlineData("Sounds Like a Melody", "Big in Japan", false)]
     public void Titelvergleich(string a, string b, bool same) =>
         Assert.Equal(same, InboxImporter.SameTitle(a, b));
