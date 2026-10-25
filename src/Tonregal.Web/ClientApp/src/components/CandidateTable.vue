@@ -2,10 +2,19 @@
 <script setup lang="ts">
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Button from 'primevue/button'
+import ReleaseCover from '@/components/ReleaseCover.vue'
 import { formatDuration, type RecordingCandidate } from '@/api'
 
 /** Kandidaten aus AcoustID/MusicBrainz; der gewählte (falls angegeben) ist hervorgehoben. */
-const props = defineProps<{ candidates: RecordingCandidate[]; selectedRecordingId?: string | null; selectedReleaseId?: string | null }>()
+const props = defineProps<{
+  candidates: RecordingCandidate[]
+  selectedRecordingId?: string | null
+  selectedReleaseId?: string | null
+  /** Zeigt pro Zeile „Diesen nehmen“. */
+  selectable?: boolean
+}>()
+const emit = defineEmits<{ select: [candidate: RecordingCandidate] }>()
 
 const percent = (score: number) => `${Math.round(score * 100)} %`
 const position = (c: RecordingCandidate) =>
@@ -32,8 +41,13 @@ const isSelected = (c: RecordingCandidate) =>
     </Column>
     <Column header="Release">
       <template #body="{ data }">
-        <a v-if="data.releaseId" :href="`https://musicbrainz.org/release/${data.releaseId}`" target="_blank" rel="noopener" class="hover:underline">{{ data.releaseTitle }}</a>
-        <div class="text-sm text-surface-500">{{ releaseDetails(data) }}</div>
+        <div class="flex items-center gap-3">
+          <ReleaseCover :release-id="data.releaseId" class="w-10 h-10 shrink-0" />
+          <div>
+            <a v-if="data.releaseId" :href="`https://musicbrainz.org/release/${data.releaseId}`" target="_blank" rel="noopener" class="hover:underline">{{ data.releaseTitle }}</a>
+            <div class="text-sm text-surface-500">{{ releaseDetails(data) }}</div>
+          </div>
+        </div>
       </template>
     </Column>
     <Column header="Typ" class="w-28">
@@ -44,6 +58,11 @@ const isSelected = (c: RecordingCandidate) =>
     </Column>
     <Column header="Dauer" class="w-20 tabular-nums">
       <template #body="{ data }">{{ data.durationMs ? formatDuration(data.durationMs) : '' }}</template>
+    </Column>
+    <Column v-if="selectable" class="w-28">
+      <template #body="{ data }">
+        <Button v-if="!isSelected(data)" label="Nehmen" size="small" severity="secondary" data-testid="select-candidate" @click="emit('select', data)" />
+      </template>
     </Column>
   </DataTable>
 </template>

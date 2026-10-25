@@ -55,6 +55,13 @@ public sealed partial class InboxImporter(
         var jobs = await db.ImportJobs
             .Where(j => j.Source == FileSource.Inbox && ImportJob.ActiveStates.Contains(j.State))
             .ToDictionaryAsync(j => j.SourcePath, StringComparer.Ordinal, ct);
+        // Verworfene Dateien bleiben in der Inbox liegen, bekommen aber keinen neuen Job, solange sie sich nicht ändern.
+        var rejected = (await db.ImportJobs
+                .Where(j => j.Source == FileSource.Inbox && j.State == ImportState.Rejected && j.Error == ImportJob.RejectedByUser)
+                .Select(j => new { j.SourcePath, j.SizeBytes, j.ModifiedAt })
+                .ToListAsync(ct))
+            .Select(j => (j.SourcePath, j.SizeBytes, j.ModifiedAt))
+            .ToHashSet();
         int created = 0, restarted = 0, removed = 0, waiting = 0;
 
         foreach (var (full, relative) in files)
@@ -73,6 +80,8 @@ public sealed partial class InboxImporter(
             var modifiedAt = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
             jobs.TryGetValue(relative, out var job);
             if (job is not null && job.SizeBytes == info.Length && job.ModifiedAt == modifiedAt)
+                continue;
+            if (job is null && rejected.Contains((relative, info.Length, modifiedAt)))
                 continue;
             if (!tracker.IsStable(relative, info.Length, TimeSpan.FromSeconds(o.InboxStableSeconds)))
             {
@@ -99,7 +108,7 @@ public sealed partial class InboxImporter(
 
         foreach (var job in jobs.Values.Where(j => !present.Contains(j.SourcePath)))
         {
-            Reject(job, "Datei liegt nicht mehr in der Inbox");
+            Reject(job, ImportJob.VanishedReason);
             removed++;
         }
 
@@ -122,7 +131,7 @@ public sealed partial class InboxImporter(
         var path = Path.Combine(Path.GetFullPath(options.Value.Inbox), job.SourcePath);
         if (!File.Exists(path))
         {
-            Reject(job, "Datei liegt nicht mehr in der Inbox");
+            Reject(job, ImportJob.VanishedReason);
             await db.SaveChangesAsync(ct);
             return job;
         }

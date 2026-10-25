@@ -39,6 +39,9 @@ public class ImportJob
     /// <summary>Warum der Treffer nicht automatisch übernommen wird.</summary>
     public string? ReviewReason { get; set; }
 
+    /// <summary>Pfad relativ zur Library nach dem Übernehmen.</summary>
+    public string? LibraryPath { get; set; }
+
     /// <summary>Idempotenzschlüssel der Ingest-API (Quelle + externalId).</summary>
     public string? ExternalId { get; set; }
     public int? AudioFileId { get; set; }
@@ -46,6 +49,9 @@ public class ImportJob
     public string? Error { get; set; }
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset? FinishedAt { get; set; }
+
+    public const string VanishedReason = "Datei liegt nicht mehr in der Inbox";
+    public const string RejectedByUser = "In der Inbox verworfen";
 
     public static readonly ImportState[] ActiveStates =
         [ImportState.New, ImportState.Fingerprinted, ImportState.Matched, ImportState.NeedsReview];

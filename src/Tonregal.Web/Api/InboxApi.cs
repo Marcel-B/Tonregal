@@ -28,6 +28,10 @@ public sealed record ImportJobDto(
 
 public sealed record InboxResponse(InboxStatus Status, IReadOnlyList<ImportJobDto> Jobs);
 
+public sealed record SelectCandidateRequest(Guid RecordingId, Guid ReleaseId);
+
+public sealed record ImportRequest(IReadOnlyList<int> JobIds);
+
 public sealed record ImportJobCandidates(int JobId, Guid? SelectedRecordingId, Guid? SelectedReleaseId, IReadOnlyList<RecordingCandidate> Candidates);
 
 public static class InboxApi
@@ -71,6 +75,54 @@ public static class InboxApi
             await db.SaveChangesAsync(ct);
             service.RequestRun();
             return TypedResults.Ok(ToDto(job));
+        });
+
+        // Entscheidung im Review: dieser Kandidat ist es. Der Job gilt damit als erkannt.
+        inbox.MapPost("/{id:int}/select", async Task<IResult> (int id, SelectCandidateRequest request, TonregalDbContext db, CancellationToken ct) =>
+        {
+            var job = await db.ImportJobs.FindAsync([id], ct);
+            if (job is null)
+                return TypedResults.NotFound();
+            if (job.State is not (ImportState.Matched or ImportState.NeedsReview))
+                return TypedResults.Problem("Nur erkannte oder zu prüfende Jobs lassen sich ändern", statusCode: StatusCodes.Status409Conflict);
+            if (!Candidates(job).Any(c => c.RecordingId == request.RecordingId && c.ReleaseId == request.ReleaseId))
+                return TypedResults.Problem("Diesen Kandidaten gibt es für den Job nicht", statusCode: StatusCodes.Status400BadRequest);
+
+            job.SelectedRecordingId = request.RecordingId;
+            job.SelectedReleaseId = request.ReleaseId;
+            job.State = ImportState.Matched;
+            job.ReviewReason = null;
+            job.Error = null;
+            await db.SaveChangesAsync(ct);
+            return TypedResults.Ok(ToDto(job));
+        });
+
+        // Datei bleibt in der Inbox, bekommt aber keinen neuen Job, solange sie sich nicht ändert.
+        inbox.MapPost("/{id:int}/reject", async Task<IResult> (int id, TonregalDbContext db, TimeProvider time, CancellationToken ct) =>
+        {
+            var job = await db.ImportJobs.FindAsync([id], ct);
+            if (job is null)
+                return TypedResults.NotFound();
+            if (!ImportJob.ActiveStates.Contains(job.State))
+                return TypedResults.Problem("Der Job ist bereits abgeschlossen", statusCode: StatusCodes.Status409Conflict);
+            job.State = ImportState.Rejected;
+            job.Error = ImportJob.RejectedByUser;
+            job.FinishedAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+            return TypedResults.NoContent();
+        });
+
+        // Übernahme in die Library läuft im Hintergrund; Fortschritt kommt per inboxStatus.
+        inbox.MapPost("/import", async Task<IResult> (ImportRequest request, TonregalDbContext db, InboxService service, CancellationToken ct) =>
+        {
+            var ids = request.JobIds.Distinct().ToList();
+            var matched = await db.ImportJobs
+                .Where(j => ids.Contains(j.Id) && j.State == ImportState.Matched && j.SelectedReleaseId != null)
+                .Select(j => j.Id)
+                .ToListAsync(ct);
+            if (matched.Count == 0)
+                return TypedResults.Problem("Keiner der Jobs ist zum Übernehmen bereit", statusCode: StatusCodes.Status409Conflict);
+            return TypedResults.Accepted("/api/inbox", service.EnqueueImports(matched));
         });
 
         return api;

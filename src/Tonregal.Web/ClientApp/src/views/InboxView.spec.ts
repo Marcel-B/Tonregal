@@ -20,7 +20,7 @@ const job = (id: number, path: string, state: ImportJob['state'], extra: Partial
 })
 
 const response: InboxResponse = {
-  status: { running: false, currentPath: null, processed: 2, waiting: 1, lastRunAt: '2026-10-25T18:00:00Z', lastError: null },
+  status: { running: false, currentPath: null, processed: 2, waiting: 1, imported: 0, importsPending: 0, lastRunAt: '2026-10-25T18:00:00Z', lastError: null },
   jobs: [
     job(1, 'Forever Young/01.mp3', 'Matched', { tagTitle: 'A Victory Of Love', tagArtist: 'Alphaville', matchScore: 0.98, selected: candidate, candidateCount: 5 }),
     job(2, 'Forever Young/02.mp3', 'NeedsReview', { matchScore: 0.72, reviewReason: 'Score 72 % unter 90 %', selected: candidate, candidateCount: 1 }),
@@ -69,5 +69,37 @@ describe('InboxView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Die Inbox ist leer')
+  })
+
+  it('übernimmt erkannte Dateien eines Ordners', async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      url === '/api/inbox/import' && init?.method === 'POST'
+        ? new Response(JSON.stringify({ ...response.status, running: true, importsPending: 1 }), { status: 202 })
+        : new Response(JSON.stringify(response)),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="import-all"]').text()).toBe('Alle erkannten übernehmen (1)')
+    await wrapper.find('[data-testid="import-group"]').trigger('click')
+    await flushPromises()
+
+    const call = fetch.mock.calls.find(([url]) => url === '/api/inbox/import')
+    expect(JSON.parse(call![1]!.body as string)).toEqual({ jobIds: [1] })
+  })
+
+  it('verwirft einen Job', async () => {
+    const fetch = vi.fn(async (url: string) =>
+      url.endsWith('/reject') ? new Response(null, { status: 204 }) : new Response(JSON.stringify(response)),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('[data-testid="reject-job"]')[2]!.trigger('click')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledWith('/api/inbox/3/reject', expect.objectContaining({ method: 'POST' }))
   })
 })

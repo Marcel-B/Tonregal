@@ -146,6 +146,8 @@ export interface InboxStatus {
   currentPath: string | null
   processed: number
   waiting: number
+  imported: number
+  importsPending: number
   lastRunAt: string | null
   lastError: string | null
 }
@@ -167,14 +169,16 @@ export interface ToolStatus {
   acoustIdConfigured: boolean
 }
 
-async function request<T>(method: string, path: string): Promise<T> {
-  const response = await fetch(`/api${path}`, { method, headers: { Accept: 'application/json' } })
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const response = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
   if (!response.ok) {
     // ProblemDetails der API tragen die eigentliche Fehlermeldung in "detail".
     const problem = await response.json().catch(() => null)
     throw new Error(problem?.detail ?? `${path}: HTTP ${response.status}`)
   }
-  return (await response.json()) as T
+  return (response.status === 204 ? undefined : await response.json()) as T
 }
 
 const get = <T>(path: string) => request<T>('GET', path)
@@ -194,6 +198,11 @@ export const api = {
   scanInbox: () => request<InboxStatus>('POST', '/inbox/scan'),
   importCandidates: (jobId: number) => get<ImportJobCandidates>(`/inbox/${jobId}/candidates`),
   retryImport: (jobId: number) => request<ImportJob>('POST', `/inbox/${jobId}/retry`),
+  selectCandidate: (jobId: number, recordingId: string, releaseId: string) =>
+    request<ImportJob>('POST', `/inbox/${jobId}/select`, { recordingId, releaseId }),
+  rejectImport: (jobId: number) => request<void>('POST', `/inbox/${jobId}/reject`),
+  importJobs: (jobIds: number[]) => request<InboxStatus>('POST', '/inbox/import', { jobIds }),
+  releaseCoverUrl: (releaseId: string) => `https://coverartarchive.org/release/${releaseId}/front-250`,
 }
 
 export function formatDuration(ms: number): string {

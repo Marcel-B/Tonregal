@@ -1,24 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
+using Tonregal.Domain.Entities;
 using Tonregal.Web.Hubs;
+using Tonregal.Web.Library;
 
 namespace Tonregal.Web.Inbox;
 
 public sealed record InboxStatus(
-    bool Running, string? CurrentPath, int Processed, int Waiting, DateTimeOffset? LastRunAt, string? LastError);
+    bool Running, string? CurrentPath, int Processed, int Waiting, int Imported, int ImportsPending,
+    DateTimeOffset? LastRunAt, string? LastError);
 
 /// <summary>
 /// Überwacht die Inbox: <see cref="FileSystemWatcher"/> plus Vollscan beim Start und alle paar
 /// Minuten (externe SSDs melden Events nicht immer zuverlässig). Neue Dateien laufen nacheinander
-/// durch den <see cref="IInboxImporter"/>; jeder Fortschritt geht als <c>inboxStatus</c> an die SPA.
+/// durch den <see cref="IInboxImporter"/>; angeforderte Übernahmen laufen danach durch den
+/// <see cref="ILibraryImporter"/>. Jeder Fortschritt geht als <c>inboxStatus</c> an die SPA.
 /// </summary>
 public sealed class InboxService(
     IServiceScopeFactory scopes,
     IHubContext<StatusHub> hub,
+    LibraryScanService libraryScan,
     IOptions<TonregalOptions> options,
     TimeProvider time,
     ILogger<InboxService> logger) : BackgroundService
@@ -29,13 +35,23 @@ public sealed class InboxService(
     private readonly Channel<bool> _requests = Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
 
-    private volatile InboxStatus _status = new(false, null, 0, 0, null, null);
+    private readonly ConcurrentQueue<int> _imports = new();
+    private volatile InboxStatus _status = new(false, null, 0, 0, 0, 0, null, null);
     private FileSystemWatcher? _watcher;
 
     public InboxStatus Status => _status;
 
     /// <summary>Fordert einen Durchlauf an; läuft bereits einer, folgt höchstens ein weiterer.</summary>
     public void RequestRun() => _requests.Writer.TryWrite(true);
+
+    /// <summary>Stellt Jobs zur Übernahme in die Library an; sie laufen im nächsten Durchlauf.</summary>
+    public InboxStatus EnqueueImports(IEnumerable<int> jobIds)
+    {
+        foreach (var id in jobIds)
+            _imports.Enqueue(id);
+        RequestRun();
+        return _status with { ImportsPending = _imports.Count };
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -59,9 +75,10 @@ public sealed class InboxService(
 
     private async Task RunAsync(CancellationToken ct)
     {
-        await PublishAsync(_status with { Running = true, CurrentPath = null, Processed = 0 }, ct);
+        await PublishAsync(_status with { Running = true, CurrentPath = null, Processed = 0, Imported = 0, ImportsPending = _imports.Count }, ct);
         var processed = 0;
         var waiting = 0;
+        var imported = 0;
         try
         {
             EnsureWatcher();
@@ -74,6 +91,9 @@ public sealed class InboxService(
             if (sync.Waiting > 0)
                 _ = RequestRunLaterAsync(TimeSpan.FromSeconds(options.Value.InboxStableSeconds + 1), ct);
 
+            // Vom Nutzer angeforderte Übernahmen zuerst; sie brauchen kein AcoustID.
+            imported = await ImportQueuedAsync(ct);
+
             while (true)
             {
                 // Pro Datei ein frischer DbContext, damit der Change-Tracker nicht wächst.
@@ -85,7 +105,7 @@ public sealed class InboxService(
                 await PublishAsync(_status with { CurrentPath = job.SourcePath, Processed = processed, Waiting = sync.Waiting }, ct);
             }
 
-            await PublishAsync(new InboxStatus(false, null, processed, sync.Waiting, time.GetUtcNow(), null), ct);
+            await PublishAsync(new InboxStatus(false, null, processed, sync.Waiting, imported, _imports.Count, time.GetUtcNow(), null), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -96,8 +116,26 @@ public sealed class InboxService(
                 logger.LogWarning("Inbox: {Message}", e.Message);
             else
                 logger.LogError(e, "Inbox-Durchlauf fehlgeschlagen");
-            await PublishAsync(new InboxStatus(false, null, processed, waiting, time.GetUtcNow(), e.Message), ct);
+            await PublishAsync(new InboxStatus(false, null, processed, waiting, imported, _imports.Count, time.GetUtcNow(), e.Message), ct);
         }
+    }
+
+    /// <summary>Übernimmt alle angeforderten Jobs; danach indexiert ein Library-Scan die neuen Dateien.</summary>
+    private async Task<int> ImportQueuedAsync(CancellationToken ct)
+    {
+        var imported = 0;
+        while (_imports.TryDequeue(out var id))
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var job = await scope.ServiceProvider.GetRequiredService<ILibraryImporter>().ImportAsync(id, ct);
+            if (job.State == ImportState.Imported)
+                imported++;
+            await PublishAsync(_status with { CurrentPath = job.SourcePath, Imported = imported, ImportsPending = _imports.Count }, ct);
+        }
+
+        if (imported > 0)
+            libraryScan.RequestScan();
+        return imported;
     }
 
     private async Task RequestRunLaterAsync(TimeSpan delay, CancellationToken ct)

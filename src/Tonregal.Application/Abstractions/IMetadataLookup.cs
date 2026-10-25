@@ -31,6 +31,10 @@ public interface IMetadataLookup
     /// <summary>Kandidaten, bester zuerst; leer, wenn AcoustID nichts kennt.</summary>
     /// <exception cref="ExternalToolUnavailableException">Kein API-Key oder Dienst nicht erreichbar.</exception>
     Task<IReadOnlyList<RecordingCandidate>> LookupAsync(Fingerprint fingerprint, CancellationToken ct);
+
+    /// <summary>Vollständige Angaben zu einer Aufnahme auf einem Release; <c>null</c>, wenn sie dort nicht vorkommt.</summary>
+    /// <exception cref="ExternalToolUnavailableException">MusicBrainz nicht erreichbar.</exception>
+    Task<ReleaseTrack?> GetReleaseTrackAsync(Guid releaseId, Guid recordingId, CancellationToken ct);
 }
 
 /// <summary>Cover Art Archive.</summary>

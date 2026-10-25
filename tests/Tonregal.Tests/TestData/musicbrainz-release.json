@@ -1,0 +1,25 @@
+{
+  "id": "aaaaaaaa-0000-0000-0000-000000000001",
+  "title": "Testalbum (Deluxe)",
+  "status": "Official",
+  "date": "2024-03-01",
+  "country": "XE",
+  "artist-credit": [ { "name": "Testband", "joinphrase": "", "artist": { "id": "ffffffff-0000-0000-0000-000000000001", "name": "Testband", "sort-name": "Testband" } } ],
+  "release-group": { "id": "bbbbbbbb-0000-0000-0000-000000000001", "title": "Testalbum", "primary-type": "Album", "secondary-types": [] },
+  "media": [
+    { "position": 1, "format": "CD", "track-count": 2, "tracks": [
+      { "id": "cccccccc-0000-0000-0000-000000000011", "number": "1", "position": 1, "title": "Erster Song", "length": 3000,
+        "recording": { "id": "eeeeeeee-0000-0000-0000-000000000011", "title": "Erster Song", "length": 3000,
+          "artist-credit": [ { "name": "Testband", "joinphrase": "", "artist": { "id": "ffffffff-0000-0000-0000-000000000001", "name": "Testband", "sort-name": "Testband" } } ] } },
+      { "id": "cccccccc-0000-0000-0000-000000000012", "number": "2", "position": 2, "title": "Dritter Song", "length": 3000,
+        "recording": { "id": "eeeeeeee-0000-0000-0000-000000000012", "title": "Dritter Song", "length": 3000 } }
+    ] },
+    { "position": 2, "format": "CD", "track-count": 1, "tracks": [
+      { "id": "cccccccc-0000-0000-0000-000000000021", "number": "1", "position": 1, "title": "Zweiter Song (Live)", "length": 2040,
+        "recording": { "id": "6f0e1a5c-6a43-4f4e-9b5c-2f6c2b2f1a11", "title": "Zweiter Song", "length": 2040,
+          "artist-credit": [
+            { "name": "Testband", "joinphrase": " feat. ", "artist": { "id": "ffffffff-0000-0000-0000-000000000001", "name": "Testband", "sort-name": "Testband" } },
+            { "name": "Gast", "joinphrase": "", "artist": { "id": "ffffffff-0000-0000-0000-000000000002", "name": "Gast", "sort-name": "Gast" } } ] } }
+    ] }
+  ]
+}
