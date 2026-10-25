@@ -14,13 +14,31 @@ const props = defineProps<{ id: number }>()
 const album = ref<AlbumDetail | null>(null)
 const error = ref<string | null>(null)
 
-watchEffect(async () => {
+async function load() {
   try {
     album.value = await api.album(props.id)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
-})
+}
+watchEffect(load)
+
+const coverVersion = ref(0)
+const fetchingCover = ref(false)
+const coverError = ref<string | null>(null)
+async function fetchCover() {
+  fetchingCover.value = true
+  coverError.value = null
+  try {
+    await api.fetchCover(props.id)
+    coverVersion.value++
+    await load()
+  } catch (e) {
+    coverError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    fetchingCover.value = false
+  }
+}
 
 const totalDuration = computed(() => formatDuration(album.value?.tracks.reduce((sum, t) => sum + t.durationMs, 0) ?? 0))
 
@@ -49,11 +67,15 @@ function openMatch(track: TrackDto) {
       <i class="pi pi-arrow-left text-xs" /> {{ album.albumArtist.name }}
     </RouterLink>
     <div class="flex flex-col sm:flex-row gap-6 mt-2 mb-6">
-      <div class="w-48 shrink-0"><AlbumCover :album-id="album.id" :alt="album.title" /></div>
+      <div class="w-48 shrink-0"><AlbumCover :key="coverVersion" :album-id="album.id" :alt="album.title" /></div>
       <div class="flex flex-col justify-end">
         <h1 class="text-2xl font-semibold">{{ album.title }}</h1>
         <div class="text-surface-500">
           {{ album.albumArtist.name }} · {{ album.year ?? 'ohne Jahr' }} · {{ album.tracks.length }} Tracks · {{ totalDuration }}
+        </div>
+        <div v-if="album.canFetchCover" class="mt-3 flex items-center gap-3">
+          <Button label="Cover suchen" icon="pi pi-image" severity="secondary" size="small" :loading="fetchingCover" data-testid="fetch-cover" @click="fetchCover" />
+          <span v-if="coverError" class="text-sm text-red-500">{{ coverError }}</span>
         </div>
       </div>
     </div>

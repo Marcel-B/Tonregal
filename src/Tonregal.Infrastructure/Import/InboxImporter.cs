@@ -142,7 +142,11 @@ public sealed partial class InboxImporter(
             var info = tagReader.Read(path);
             tags = info.Tags;
             if (job.State == ImportState.New)
+            {
                 await FingerprintAsync(job, path, info, ct);
+                if (await RejectIfInLibraryAsync(job, path, ct))
+                    return job;
+            }
         }
         catch (Exception e) when (e is InvalidDataException or IOException or UnauthorizedAccessException)
         {
@@ -194,6 +198,24 @@ public sealed partial class InboxImporter(
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Eine byte-gleiche Datei liegt schon in der Library: die Inbox-Kopie wandert in den Papierkorb
+    /// (<c>.trash/{Datum}/Inbox/…</c>), der Job ist erledigt.
+    /// </summary>
+    private async Task<bool> RejectIfInLibraryAsync(ImportJob job, string path, CancellationToken ct)
+    {
+        var existing = await db.AudioFiles.Where(f => f.FileHash == job.FileHash).Select(f => f.Path).FirstOrDefaultAsync(ct);
+        if (existing is null)
+            return false;
+
+        var o = options.Value;
+        LibraryTrash.Move(o.Trash, path, Path.Combine("Inbox", job.SourcePath), time.GetUtcNow());
+        LibraryImporter.RemoveEmptyFolders(Path.GetDirectoryName(path)!, Path.GetFullPath(o.Inbox));
+        Reject(job, ImportJob.AlreadyInLibrary + existing);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
     /// <summary>Abweichung zwischen Datei und Aufnahme, ab der ein Kandidat nicht mehr in Frage kommt.</summary>
     private static readonly TimeSpan DurationTolerance = TimeSpan.FromSeconds(15);
 
@@ -203,6 +225,9 @@ public sealed partial class InboxImporter(
     /// </summary>
     internal static void Decide(ImportJob job, AudioTags tags, IReadOnlyList<RecordingCandidate> candidates, double autoMatchScore)
     {
+        // „Titel 12“, „Track 03“: Platzhalter vom Ripper, kein Titel.
+        if (tags.Title is { } placeholder && PlaceholderTitle().IsMatch(placeholder.Trim()))
+            tags = tags with { Title = null };
         job.SelectedRecordingId = null;
         job.SelectedReleaseId = null;
         job.ReviewReason = null;
@@ -246,6 +271,8 @@ public sealed partial class InboxImporter(
             return "MusicBrainz-ID in den Tags passt nicht zum Fingerprint";
         if (tags.Title is { } title)
             return MatchesTags(selected, tags) ? null : $"Tags passen zu keinem Treffer: „{title}“";
+        if (tags.Artists.Count > 0 && !MatchesArtist(selected, tags))
+            return $"Interpret passt zu keinem Treffer: „{string.Join(", ", tags.Artists)}“";
 
         // Ohne Titel in den Tags entscheidet nur der Fingerprint; dann muss er eindeutig sein.
         return good.FirstOrDefault(c => !SameSong(c, selected)) is { } other
@@ -263,8 +290,10 @@ public sealed partial class InboxImporter(
             .ToList();
 
     private static bool MatchesTags(RecordingCandidate c, AudioTags tags) =>
-        tags.Title is { } title && SameTitle(title, c.Title)
-        && (tags.Artists.Count == 0 || c.Artists.Count == 0 || tags.Artists.Any(a => c.Artists.Any(b => SameTitle(a, b))));
+        tags.Title is { } title && SameTitle(title, c.Title) && MatchesArtist(c, tags);
+
+    private static bool MatchesArtist(RecordingCandidate c, AudioTags tags) =>
+        tags.Artists.Count == 0 || c.Artists.Count == 0 || tags.Artists.Any(a => c.Artists.Any(b => SameTitle(a, b)));
 
     private static string FormatDuration(int ms) => $"{ms / 60000}:{ms / 1000 % 60:00}";
 
@@ -338,13 +367,49 @@ public sealed partial class InboxImporter(
         SameTitle(a.Title, b.Title)
         && (a.Artists.Count == 0 || b.Artists.Count == 0 || SameTitle(a.Artists[0], b.Artists[0]));
 
-    /// <summary>Gleich nach Normalisierung, oder einer enthält den anderen („Song (Remastered 2011)“).</summary>
+    /// <summary>
+    /// Gleich nach Normalisierung, einer enthält den anderen („Song (Remastered 2011)“) oder sie
+    /// unterscheiden sich nur durch einen Tippfehler („Talking Over Me“ / „Taking Over Me“).
+    /// </summary>
     internal static bool SameTitle(string a, string b)
     {
         var x = TrackKey.Normalize(DroppedG().Replace(a, "$1ing"));
         var y = TrackKey.Normalize(DroppedG().Replace(b, "$1ing"));
-        return x.Contains(y, StringComparison.Ordinal) || y.Contains(x, StringComparison.Ordinal);
+        if (x.Length == 0 || y.Length == 0)
+            return x == y;
+        if (x.Contains(y, StringComparison.Ordinal) || y.Contains(x, StringComparison.Ordinal))
+            return true;
+        var allowed = Math.Min(x.Length, y.Length) switch { < 6 => 0, < 12 => 1, _ => 2 };
+        return allowed > 0 && EditDistance(x, y, allowed) <= allowed;
     }
+
+    /// <summary>Levenshtein-Distanz, abgebrochen sobald sie <paramref name="limit"/> überschreitet.</summary>
+    internal static int EditDistance(string a, string b, int limit)
+    {
+        if (Math.Abs(a.Length - b.Length) > limit)
+            return limit + 1;
+        var previous = Enumerable.Range(0, b.Length + 1).ToArray();
+        var current = new int[b.Length + 1];
+        for (var i = 1; i <= a.Length; i++)
+        {
+            current[0] = i;
+            var rowMin = i;
+            for (var j = 1; j <= b.Length; j++)
+            {
+                current[j] = Math.Min(Math.Min(current[j - 1], previous[j]) + 1, previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+                rowMin = Math.Min(rowMin, current[j]);
+            }
+
+            if (rowMin > limit)
+                return limit + 1;
+            (previous, current) = (current, previous);
+        }
+
+        return previous[b.Length];
+    }
+
+    [GeneratedRegex(@"^(track|titel|title|piste|pista|spur|audio ?track|unbekannt|unknown)?[\s_-]*\d{1,3}$", RegexOptions.IgnoreCase)]
+    private static partial Regex PlaceholderTitle();
 
     /// <summary>„Lookin'“ → „Looking“.</summary>
     [GeneratedRegex(@"(\w)in['’]", RegexOptions.IgnoreCase)]

@@ -24,7 +24,8 @@ public sealed record TrackDto(
     double? Bpm, string? InitialKey, string? Genre, IReadOnlyList<FileDto> Files);
 
 public sealed record AlbumDetail(
-    int Id, string Title, int? Year, AlbumKind Kind, int DiscCount, ArtistRef AlbumArtist, IReadOnlyList<TrackDto> Tracks);
+    int Id, string Title, int? Year, AlbumKind Kind, int DiscCount, ArtistRef AlbumArtist, IReadOnlyList<TrackDto> Tracks,
+    bool CanFetchCover);
 
 public static class LibraryApi
 {
@@ -72,7 +73,8 @@ public static class LibraryApi
                 .ToList();
             return TypedResults.Ok(new AlbumDetail(
                 album.Id, album.Title, album.Year, album.Kind, album.DiscCount,
-                new ArtistRef(album.AlbumArtist.Id, album.AlbumArtist.Name), tracks));
+                new ArtistRef(album.AlbumArtist.Id, album.AlbumArtist.Name), tracks,
+                album.CoverPath is null && album.MusicBrainzReleaseId is not null));
         });
 
         library.MapGet("/albums/{id:int}/cover", async Task<IResult> (
@@ -104,6 +106,49 @@ public static class LibraryApi
             return TypedResults.NotFound();
         });
 
+        // cover.jpg aus dem Cover Art Archive nachholen, für Alben, die ohne Cover übernommen wurden.
+        library.MapPost("/albums/{id:int}/cover", async Task<IResult> (
+            int id, TonregalDbContext db, IMetadataLookup lookup, ICoverArtSource covers, IOptions<TonregalOptions> options, CancellationToken ct) =>
+        {
+            var album = await db.Albums.Include(a => a.Tracks).ThenInclude(t => t.Files).SingleOrDefaultAsync(a => a.Id == id, ct);
+            if (album is null)
+                return TypedResults.NotFound();
+            if (album.MusicBrainzReleaseId is not { } releaseId)
+                return TypedResults.Problem("Das Album hat keine MusicBrainz-Release-ID", statusCode: StatusCodes.Status400BadRequest);
+            var root = Path.GetFullPath(options.Value.Library);
+            if (ResolveInside(root, album.Tracks.SelectMany(t => t.Files).Select(f => f.Path).FirstOrDefault()) is not { } audioFile
+                || !File.Exists(options.Value.MountMarker))
+                return TypedResults.Problem("Die Dateien des Albums sind nicht erreichbar", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            EmbeddedPicture? cover;
+            try
+            {
+                cover = await covers.GetFrontCoverAsync(releaseId, await lookup.GetReleaseGroupIdAsync(releaseId, ct), ct);
+            }
+            catch (Exception e) when (e is ExternalToolUnavailableException or HttpRequestException)
+            {
+                return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            if (cover is null)
+                return TypedResults.Problem("Das Cover Art Archive hat kein Cover für dieses Album", statusCode: StatusCodes.Status404NotFound);
+            var name = cover.MimeType == "image/png" ? "cover.png" : "cover.jpg";
+            var target = Path.Combine(Path.GetDirectoryName(audioFile)!, name);
+            await File.WriteAllBytesAsync(target, cover.Data, ct);
+            album.CoverPath = Path.GetRelativePath(root, target).Replace(Path.DirectorySeparatorChar, '/');
+            await db.SaveChangesAsync(ct);
+            return TypedResults.NoContent();
+        });
+
+        // Zum Vorhören; Range-Anfragen, damit der Browser springen kann.
+        library.MapGet("/files/{id:int}/audio", async Task<IResult> (int id, TonregalDbContext db, IOptions<TonregalOptions> options, CancellationToken ct) =>
+        {
+            var path = await db.AudioFiles.Where(f => f.Id == id).Select(f => f.Path).SingleOrDefaultAsync(ct);
+            if (ResolveInside(Path.GetFullPath(options.Value.Library), path) is not { } file || !File.Exists(file))
+                return TypedResults.NotFound();
+            return TypedResults.PhysicalFile(file, AudioContentType(file), enableRangeProcessing: true);
+        });
+
         library.MapGet("/scan", (LibraryScanService scans) => scans.Status);
 
         library.MapPost("/scan", (LibraryScanService scans) =>
@@ -114,6 +159,16 @@ public static class LibraryApi
 
         return api;
     }
+
+    private static string AudioContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".mp3" => "audio/mpeg",
+        ".flac" => "audio/flac",
+        ".m4a" or ".mp4" or ".aac" => "audio/mp4",
+        ".ogg" or ".oga" or ".opus" => "audio/ogg",
+        ".wav" => "audio/wav",
+        _ => "application/octet-stream",
+    };
 
     /// <summary>Löst einen Library-relativen Pfad auf und verhindert, dass er aus der Library herausführt.</summary>
     internal static string? ResolveInside(string root, string? relative)

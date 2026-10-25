@@ -100,4 +100,29 @@ public sealed class InboxApiTests : IDisposable
         Assert.Empty((await _client.GetFromJsonAsync<InboxResponse>("/api/inbox", Json, Ct))!.Jobs);
         Assert.True(File.Exists(Path.Combine(_library.MusicRoot, "Inbox", "Testalbum", "01.mp3")));
     }
+
+    [Fact]
+    public async Task Upload_legt_Dateien_mit_Ordner_in_die_Inbox()
+    {
+        async Task<HttpResponseMessage> UploadAsync(string path, string testFile = "song2.flac")
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new ByteArrayContent(await File.ReadAllBytesAsync(Path.Combine(TestLibrary.TestData, testFile), Ct)), "file", Path.GetFileName(path));
+            form.Add(new StringContent(path), "path");
+            return await _client.PostAsync("/api/inbox/upload", form, Ct);
+        }
+
+        var first = await UploadAsync("Neues Album/02 - Song.flac");
+        var second = await UploadAsync("Neues Album/02 - Song.flac");
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal("Neues Album/02 - Song.flac", (await first.Content.ReadFromJsonAsync<UploadResponse>(Json, Ct))!.Path);
+        Assert.Equal("Neues Album/02 - Song (2).flac", (await second.Content.ReadFromJsonAsync<UploadResponse>(Json, Ct))!.Path);
+        Assert.True(File.Exists(Path.Combine(_library.MusicRoot, "Inbox", "Neues Album", "02 - Song.flac")));
+        Assert.Equal(HttpStatusCode.BadRequest, (await UploadAsync("../ausserhalb.flac")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await UploadAsync("Album/notizen.txt")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await UploadAsync("_api/x.flac")).StatusCode);
+        Assert.False(File.Exists(Path.Combine(_library.MusicRoot, "ausserhalb.flac")));
+        Assert.DoesNotContain(Directory.GetFiles(Path.Combine(_library.MusicRoot, "Inbox", "Neues Album")), f => Path.GetFileName(f).StartsWith('.'));
+    }
 }

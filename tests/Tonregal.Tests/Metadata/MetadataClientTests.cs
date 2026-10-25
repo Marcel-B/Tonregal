@@ -174,6 +174,26 @@ public sealed class MetadataClientTests : IDisposable
     }
 
     [Fact]
+    public async Task Cover_der_Release_Gruppe_wenn_die_Ausgabe_keins_hat()
+    {
+        var release = Guid.NewGuid();
+        var group = Guid.NewGuid();
+        var handler = new StubHandler(r => r.RequestUri!.AbsolutePath.StartsWith("/release-group/")
+            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) { Headers = { ContentType = new("image/jpeg") } } }
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var client = new CoverArtArchiveClient(handler.Client(CoverArtArchiveClient.BaseAddress), new NoDelayTimeProvider());
+
+        var cover = await client.GetFrontCoverAsync(release, group, Ct);
+        var none = await client.GetFrontCoverAsync(release, null, Ct);
+
+        Assert.Equal([1, 2, 3], cover!.Data);
+        Assert.Null(none);
+        Assert.Equal(
+            [$"/release/{release}/front-1200", $"/release-group/{group}/front-1200", $"/release/{release}/front-1200"],
+            handler.Requests.Select(r => r.Request.RequestUri!.AbsolutePath));
+    }
+
+    [Fact]
     public async Task RequestGate_haelt_Mindestabstand()
     {
         var gate = new RequestGate(TimeSpan.FromMilliseconds(200), TimeProvider.System);

@@ -68,6 +68,7 @@ export interface AlbumDetail {
   discCount: number
   albumArtist: { id: number; name: string }
   tracks: TrackDto[]
+  canFetchCover: boolean
 }
 
 export interface ScanProgress {
@@ -164,6 +165,35 @@ export interface ImportJobCandidates {
   candidates: RecordingCandidate[]
 }
 
+export type DuplicateKind = 'ExactHash' | 'Fingerprint' | 'Metadata'
+export type FileSource = 'Inbox' | 'Purchase' | 'Legacy' | 'Api'
+
+export interface DuplicateFile {
+  id: number
+  path: string
+  format: AudioFormat
+  bitrate: number
+  sampleRate: number
+  sizeBytes: number
+  durationMs: number
+  title: string
+  artists: string[]
+  albumId: number
+  album: string
+  year: number | null
+  hasMusicBrainzId: boolean
+  source: FileSource
+  addedAt: string
+}
+
+export interface DuplicateGroup {
+  id: number
+  kind: DuplicateKind
+  suggestedFileId: number | null
+  createdAt: string
+  files: DuplicateFile[]
+}
+
 export interface ToolStatus {
   fpcalc: string | null
   acoustIdConfigured: boolean
@@ -171,8 +201,9 @@ export interface ToolStatus {
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
-  const response = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+  const form = body instanceof FormData
+  if (body !== undefined && !form) headers['Content-Type'] = 'application/json'
+  const response = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : form ? body : JSON.stringify(body) })
   if (!response.ok) {
     // ProblemDetails der API tragen die eigentliche Fehlermeldung in "detail".
     const problem = await response.json().catch(() => null)
@@ -203,7 +234,24 @@ export const api = {
   rejectImport: (jobId: number) => request<void>('POST', `/inbox/${jobId}/reject`),
   importJobs: (jobIds: number[]) => request<InboxStatus>('POST', '/inbox/import', { jobIds }),
   releaseCoverUrl: (releaseId: string) => `https://coverartarchive.org/release/${releaseId}/front-250`,
+  fetchCover: (albumId: number) => request<void>('POST', `/library/albums/${albumId}/cover`),
+  audioUrl: (fileId: number) => `/api/library/files/${fileId}/audio`,
+  duplicates: () => get<DuplicateGroup[]>('/duplicates'),
+  scanDuplicates: () => request<ScanStatus>('POST', '/duplicates/scan'),
+  resolveDuplicate: (groupId: number, keepFileIds: number[]) => request<void>('POST', `/duplicates/${groupId}/resolve`, { keepFileIds }),
+  /** Eine Datei in die Inbox; path ist relativ zur Inbox und bestimmt den Album-Ordner. */
+  upload: (file: File, path: string) => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    form.append('path', path)
+    return request<{ path: string }>('POST', '/inbox/upload', form)
+  },
 }
+
+/** Endungen, die Tonregal liest; alles andere wird beim Hochladen übersprungen. */
+export const audioExtensions = ['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav']
+
+export const isAudioFile = (name: string) => audioExtensions.some((ext) => name.toLowerCase().endsWith(ext))
 
 export function formatDuration(ms: number): string {
   const seconds = Math.round(ms / 1000)

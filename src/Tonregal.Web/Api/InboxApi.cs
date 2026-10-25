@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
 using Tonregal.Infrastructure.Import;
@@ -32,6 +35,8 @@ public sealed record SelectCandidateRequest(Guid RecordingId, Guid ReleaseId);
 
 public sealed record ImportRequest(IReadOnlyList<int> JobIds);
 
+public sealed record UploadResponse(string Path);
+
 public sealed record ImportJobCandidates(int JobId, Guid? SelectedRecordingId, Guid? SelectedReleaseId, IReadOnlyList<RecordingCandidate> Candidates);
 
 public static class InboxApi
@@ -40,11 +45,14 @@ public static class InboxApi
     {
         var inbox = api.MapGroup("/inbox");
 
-        // Offene Jobs, nach Ordner und Dateiname sortiert.
-        inbox.MapGet("/", async (TonregalDbContext db, InboxService service, CancellationToken ct) =>
+        // Offene Jobs, nach Ordner und Dateiname sortiert; dazu, was in den letzten Stunden als
+        // byte-gleiche Kopie verworfen wurde, damit ein Upload nicht kommentarlos verschwindet.
+        inbox.MapGet("/", async (TonregalDbContext db, InboxService service, TimeProvider time, CancellationToken ct) =>
         {
+            var since = time.GetUtcNow().AddHours(-12);
             var jobs = await db.ImportJobs.AsNoTracking()
-                .Where(j => ImportJob.ActiveStates.Contains(j.State))
+                .Where(j => ImportJob.ActiveStates.Contains(j.State)
+                    || (j.State == ImportState.Rejected && j.FinishedAt > since && j.Error!.StartsWith(ImportJob.AlreadyInLibrary)))
                 .ToListAsync(ct);
             return new InboxResponse(service.Status, jobs
                 .OrderBy(j => j.SourcePath, StringComparer.OrdinalIgnoreCase)
@@ -124,6 +132,28 @@ public static class InboxApi
                 return TypedResults.Problem("Keiner der Jobs ist zum Übernehmen bereit", statusCode: StatusCodes.Status409Conflict);
             return TypedResults.Accepted("/api/inbox", service.EnqueueImports(matched));
         });
+
+        // Drag & Drop: eine Datei pro Anfrage, path ist der relative Pfad aus dem Browser („Album/01.mp3“).
+        inbox.MapPost("/upload", async Task<IResult> (
+                IFormFile file, [FromForm] string path, IOptions<TonregalOptions> options, InboxService service, CancellationToken ct) =>
+            {
+                if (!File.Exists(options.Value.MountMarker))
+                    return TypedResults.Problem("Die SSD ist nicht gemountet", statusCode: StatusCodes.Status503ServiceUnavailable);
+                try
+                {
+                    await using var content = file.OpenReadStream();
+                    var saved = await InboxUpload.SaveAsync(options.Value.Inbox, path, content, ct);
+                    service.RequestRun();
+                    return TypedResults.Created("/api/inbox", new UploadResponse(saved));
+                }
+                catch (ArgumentException e)
+                {
+                    return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status400BadRequest);
+                }
+            })
+            .DisableAntiforgery()
+            .WithMetadata(new DisableRequestSizeLimitAttribute())
+            .WithFormOptions(multipartBodyLengthLimit: 4L << 30);
 
         return api;
     }

@@ -96,6 +96,9 @@ public sealed class MetadataLookup(
     /// <summary>MusicBrainz-ID von „Various Artists“.</summary>
     internal static readonly Guid VariousArtistsId = Guid.Parse("89ad4ac3-39f7-470e-963a-56509c546377");
 
+    public async Task<Guid?> GetReleaseGroupIdAsync(Guid releaseId, CancellationToken ct) =>
+        (await musicBrainz.GetReleaseAsync(releaseId, ct))?.ReleaseGroup?.Id;
+
     public async Task<ReleaseTrack?> GetReleaseTrackAsync(Guid releaseId, Guid recordingId, CancellationToken ct)
     {
         var release = await musicBrainz.GetReleaseAsync(releaseId, ct);

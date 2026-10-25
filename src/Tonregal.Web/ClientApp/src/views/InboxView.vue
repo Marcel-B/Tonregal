@@ -9,6 +9,7 @@ import Message from 'primevue/message'
 import SelectButton from 'primevue/selectbutton'
 import Dialog from 'primevue/dialog'
 import CandidateTable from '@/components/CandidateTable.vue'
+import InboxUpload from '@/components/InboxUpload.vue'
 import ReleaseCover from '@/components/ReleaseCover.vue'
 import { useStatusStore } from '@/stores/status'
 import { api, formatDuration, type ImportJob, type ImportJobCandidates, type ImportState, type RecordingCandidate } from '@/api'
@@ -69,7 +70,8 @@ const stateTag: Record<ImportState, { label: string; severity: string }> = {
   Matched: { label: 'Erkannt', severity: 'success' },
   NeedsReview: { label: 'Prüfen', severity: 'warn' },
   Imported: { label: 'Importiert', severity: 'info' },
-  Rejected: { label: 'Verworfen', severity: 'danger' },
+  // Die Liste zeigt nur automatisch verworfene Kopien von Dateien, die schon in der Library liegen.
+  Rejected: { label: 'Schon da', severity: 'secondary' },
 }
 
 const fileName = (job: ImportJob) => job.path.slice(job.path.lastIndexOf('/') + 1)
@@ -149,6 +151,7 @@ async function select(candidate: RecordingCandidate) {
       @click="importJobs(matched())"
     />
     <Button label="Inbox prüfen" icon="pi pi-refresh" severity="secondary" size="small" :loading="status.inbox?.running" @click="scan" />
+    <InboxUpload @uploaded="scan" />
   </div>
   <Message v-if="actionError" severity="error" class="mb-4">{{ actionError }}</Message>
 
@@ -156,7 +159,8 @@ async function select(candidate: RecordingCandidate) {
   <Message v-if="status.inbox?.lastError" severity="warn" class="mb-4">{{ status.inbox.lastError }}</Message>
 
   <Message v-if="loaded && !jobs.length" severity="info">
-    Die Inbox ist leer. Lege neue Alben als Ordner in <code>Musik/Inbox</code> auf der T7 ab, Tonregal erkennt sie dann automatisch.
+    Die Inbox ist leer. Zieh Album-Ordner oder Dateien einfach hierher, oder lege sie in <code>Musik/Inbox</code> auf der T7 ab.
+    Tonregal erkennt sie dann automatisch.
   </Message>
 
   <template v-else-if="jobs.length">
@@ -200,7 +204,7 @@ async function select(candidate: RecordingCandidate) {
             </div>
           </div>
           <div v-if="data.reviewReason" class="text-sm text-orange-500" data-testid="job-reason">{{ data.reviewReason }}</div>
-          <div v-if="data.error" class="text-sm text-red-500 break-all">{{ data.error }}</div>
+          <div v-if="data.error" class="text-sm break-all" :class="data.state === 'Rejected' ? 'text-surface-500' : 'text-red-500'">{{ data.error }}</div>
         </template>
       </Column>
       <Column header="Score" class="w-20 tabular-nums">
@@ -230,8 +234,9 @@ async function select(candidate: RecordingCandidate) {
               :title="`${data.candidateCount} Kandidaten`"
               @click="showCandidates(data)"
             />
-            <Button v-if="data.error || data.state === 'NeedsReview'" icon="pi pi-replay" text rounded size="small" aria-label="Erneut abgleichen" title="Erneut abgleichen" @click="retry(data)" />
+            <Button v-if="data.state !== 'Rejected' && (data.error || data.state === 'NeedsReview')" icon="pi pi-replay" text rounded size="small" aria-label="Erneut abgleichen" title="Erneut abgleichen" @click="retry(data)" />
             <Button
+              v-if="data.state !== 'Rejected'"
               icon="pi pi-times"
               text
               rounded

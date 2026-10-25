@@ -60,10 +60,51 @@ public class FpcalcFingerprintServiceTests
         Assert.NotNull(offset);
 
         var direct = await Create().ComputeAsync(path, TestContext.Current.CancellationToken);
-        var fallback = await Create().ComputeWithoutId3Async(path, offset.Value, TestContext.Current.CancellationToken);
+        var fallback = await Create().ComputeFromOffsetAsync(path, offset.Value, TestContext.Current.CancellationToken);
 
         Assert.Equal(direct.Value, fallback.Value);
         Assert.InRange(fallback.Duration.TotalSeconds, 2.5, 3.5);
+    }
+
+    [Fact]
+    public async Task WAV_Hülle_hinter_fremden_Bytes_wird_ab_den_Audiodaten_gelesen()
+    {
+        // So sahen die Dateien aus, bei denen schon das Weglassen des ID3-Tags nicht reichte.
+        var riff = await File.ReadAllBytesAsync(Path.Combine(TestLibrary.TestData, "song5-riff.mp3"), TestContext.Current.CancellationToken);
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.mp3");
+        await File.WriteAllBytesAsync(path, [.. Enumerable.Range(0, 500).Select(i => (byte)(i * 7 % 251)), .. riff], TestContext.Current.CancellationToken);
+        try
+        {
+            var expected = await Create().ComputeAsync(Path.Combine(TestLibrary.TestData, "song5-riff.mp3"), TestContext.Current.CancellationToken);
+            var fingerprint = await Create().ComputeAsync(path, TestContext.Current.CancellationToken);
+
+            Assert.Equal(expected.Value, fingerprint.Value);
+            Assert.InRange(fingerprint.Duration.TotalSeconds, 2.5, 3.5);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Findet_Datenblock_der_WAV_Hülle_und_ersten_MP3_Frame()
+    {
+        var path = Path.Combine(TestLibrary.TestData, "song5-riff.mp3");
+        var bytes = File.ReadAllBytes(path);
+        var id3 = (int)FpcalcFingerprintService.Id3TagLength(path)!.Value;
+
+        var data = FpcalcFingerprintService.RiffDataOffset(bytes, id3);
+        var frame = FpcalcFingerprintService.FirstMpegFrame(bytes, id3);
+
+        Assert.NotNull(data);
+        var dataStart = (int)data.Value;
+        Assert.Equal("data"u8.ToArray(), bytes[(dataStart - 8)..(dataStart - 4)]);
+        Assert.NotNull(frame);
+        Assert.True(frame >= data);
+        Assert.NotNull(FpcalcFingerprintService.MpegFrameLength(bytes.AsSpan((int)frame.Value)));
+        Assert.Equal(data, frame);
+        Assert.Equal([id3, data.Value], FpcalcFingerprintService.AudioDataOffsets(path));
     }
 
     [Fact]

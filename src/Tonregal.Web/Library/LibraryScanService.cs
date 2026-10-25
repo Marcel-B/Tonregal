@@ -10,7 +10,8 @@ public sealed record ScanStatus(
     bool Running, ScanProgress? Progress, DateTimeOffset? LastRunAt, ScanResult? LastResult, string? LastError);
 
 /// <summary>
-/// Führt Library-Scans nacheinander im Hintergrund aus: einmal beim Start und auf Anfrage.
+/// Führt Library-Scans nacheinander im Hintergrund aus: einmal beim Start und auf Anfrage. Nach
+/// jedem Scan folgen Dublettensuche und Aufräumen des Papierkorbs.
 /// Fortschritt und Ergebnis gehen als <c>scanStatus</c> an alle SignalR-Clients.
 /// </summary>
 public sealed class LibraryScanService(
@@ -47,6 +48,9 @@ public sealed class LibraryScanService(
             var scanner = scope.ServiceProvider.GetRequiredService<ILibraryScanner>();
             var progress = new SyncProgress(p => _ = PublishAsync(_status with { Progress = p }, ct));
             var result = await scanner.ScanAsync(progress, ct);
+            var duplicates = scope.ServiceProvider.GetRequiredService<IDuplicateService>();
+            await duplicates.DetectAsync(ct);
+            duplicates.PurgeTrash();
             await PublishAsync(new ScanStatus(false, null, time.GetUtcNow(), result, null), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

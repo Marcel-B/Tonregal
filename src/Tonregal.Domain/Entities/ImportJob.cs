@@ -52,6 +52,7 @@ public class ImportJob
 
     public const string VanishedReason = "Datei liegt nicht mehr in der Inbox";
     public const string RejectedByUser = "In der Inbox verworfen";
+    public const string AlreadyInLibrary = "Liegt schon identisch in der Library: ";
 
     public static readonly ImportState[] ActiveStates =
         [ImportState.New, ImportState.Fingerprinted, ImportState.Matched, ImportState.NeedsReview];

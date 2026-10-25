@@ -120,19 +120,19 @@ public sealed class LibraryImporterTests : IDisposable
     }
 
     [Fact]
-    public async Task Belegtes_Ziel_laesst_die_Inbox_Datei_unveraendert()
+    public async Task Belegtes_Ziel_landet_daneben_fuer_die_Dublettenpruefung()
     {
         var job = await MatchedJobAsync("song1.mp3", "01.mp3");
-        var source = Path.Combine(Inbox, "01.mp3");
-        var before = File.ReadAllBytes(source);
+        var occupied = Path.Combine(_library.Library, AlbumFolder, "01 - A Victory of Love.mp3");
         _library.Copy("song3.m4a", Path.Combine(_library.Library, AlbumFolder), "01 - A Victory of Love.mp3");
+        var before = File.ReadAllBytes(occupied);
 
         var result = await Importer().ImportAsync(job.Id, Ct);
 
-        Assert.Equal(ImportState.Matched, result.State);
-        Assert.Equal($"In der Library liegt schon {AlbumFolder}/01 - A Victory of Love.mp3", result.Error);
-        Assert.Equal(before, File.ReadAllBytes(source));
-        Assert.DoesNotContain(Directory.GetFiles(Path.Combine(_library.Library, AlbumFolder)), f => Path.GetFileName(f).StartsWith('.'));
+        Assert.Equal(ImportState.Imported, result.State);
+        Assert.Equal($"{AlbumFolder}/01 - A Victory of Love (2).mp3", result.LibraryPath);
+        Assert.Equal(before, File.ReadAllBytes(occupied));
+        Assert.False(File.Exists(Path.Combine(Inbox, "01.mp3")));
     }
 
     [Fact]
@@ -173,6 +173,8 @@ public sealed class LibraryImporterTests : IDisposable
 
         public Task<ReleaseTrack?> GetReleaseTrackAsync(Guid releaseId, Guid recordingId, CancellationToken ct) =>
             Task.FromResult<ReleaseTrack?>(track());
+
+        public Task<Guid?> GetReleaseGroupIdAsync(Guid releaseId, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class FakeCovers : ICoverArtSource
@@ -181,7 +183,7 @@ public sealed class LibraryImporterTests : IDisposable
         public int Calls { get; private set; }
         public bool Unavailable { get; set; }
 
-        public Task<EmbeddedPicture?> GetFrontCoverAsync(Guid releaseId, CancellationToken ct)
+        public Task<EmbeddedPicture?> GetFrontCoverAsync(Guid releaseId, Guid? releaseGroupId, CancellationToken ct)
         {
             Calls++;
             return Unavailable

@@ -70,12 +70,13 @@ public sealed class LibraryImporter(
             track.Disc, track.DiscCount, track.Track, track.Title, Path.GetExtension(source));
         var target = Path.Combine(libraryRoot, relative);
         var albumFolder = Path.GetDirectoryName(target)!;
-        var libraryRelative = relative.Replace(Path.DirectorySeparatorChar, '/');
-        if (File.Exists(target))
-            throw new IOException($"In der Library liegt schon {libraryRelative}");
+        // Belegter Platz: daneben ablegen, die Dublettenerkennung zeigt danach beide zur Entscheidung.
+        for (var i = 2; File.Exists(target); i++)
+            target = Path.Combine(albumFolder, $"{Path.GetFileNameWithoutExtension(relative)} ({i}){Path.GetExtension(relative)}");
+        var libraryRelative = Path.GetRelativePath(libraryRoot, target).Replace(Path.DirectorySeparatorChar, '/');
 
         Directory.CreateDirectory(albumFolder);
-        var cover = await CoverAsync(source, albumFolder, releaseId, ct);
+        var cover = await CoverAsync(source, albumFolder, releaseId, track.ReleaseGroupId, ct);
 
         var temp = Path.Combine(albumFolder, $"{TempPrefix}{Guid.NewGuid():N}{Path.GetExtension(source)}");
         try
@@ -104,7 +105,7 @@ public sealed class LibraryImporter(
     /// cover.jpg im Albumordner hat Vorrang, dann ein eingebettetes Cover der Datei, dann das Cover
     /// Art Archive. Fehlt cover.jpg, wird es angelegt (Navidrome-Konvention).
     /// </summary>
-    private async Task<EmbeddedPicture?> CoverAsync(string source, string albumFolder, Guid releaseId, CancellationToken ct)
+    private async Task<EmbeddedPicture?> CoverAsync(string source, string albumFolder, Guid releaseId, Guid? releaseGroupId, CancellationToken ct)
     {
         var folderCover = Path.Combine(albumFolder, "cover.jpg");
         if (File.Exists(folderCover))
@@ -113,7 +114,7 @@ public sealed class LibraryImporter(
         EmbeddedPicture? cover = null;
         try
         {
-            cover = tagReader.ReadCover(source) ?? await covers.GetFrontCoverAsync(releaseId, ct);
+            cover = tagReader.ReadCover(source) ?? await covers.GetFrontCoverAsync(releaseId, releaseGroupId, ct);
         }
         catch (Exception e) when (e is ExternalToolUnavailableException or HttpRequestException or InvalidDataException)
         {
@@ -135,7 +136,7 @@ public sealed class LibraryImporter(
     }
 
     /// <summary>Entfernt leere Inbox-Ordner (macOS-Reste wie .DS_Store und ._* zählen als leer).</summary>
-    private static void RemoveEmptyFolders(string folder, string inboxRoot)
+    internal static void RemoveEmptyFolders(string folder, string inboxRoot)
     {
         while (folder.Length > inboxRoot.Length && folder.StartsWith(inboxRoot, StringComparison.Ordinal))
         {

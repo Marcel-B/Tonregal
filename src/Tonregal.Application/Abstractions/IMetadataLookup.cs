@@ -35,11 +35,18 @@ public interface IMetadataLookup
     /// <summary>Vollständige Angaben zu einer Aufnahme auf einem Release; <c>null</c>, wenn sie dort nicht vorkommt.</summary>
     /// <exception cref="ExternalToolUnavailableException">MusicBrainz nicht erreichbar.</exception>
     Task<ReleaseTrack?> GetReleaseTrackAsync(Guid releaseId, Guid recordingId, CancellationToken ct);
+
+    /// <summary>Release-Gruppe (das Album über alle Ausgaben) eines Releases; <c>null</c>, wenn MusicBrainz das Release nicht kennt.</summary>
+    /// <exception cref="ExternalToolUnavailableException">MusicBrainz nicht erreichbar.</exception>
+    Task<Guid?> GetReleaseGroupIdAsync(Guid releaseId, CancellationToken ct);
 }
 
 /// <summary>Cover Art Archive.</summary>
 public interface ICoverArtSource
 {
-    /// <summary>Front-Cover des Releases oder <c>null</c>, wenn es keins gibt.</summary>
-    Task<EmbeddedPicture?> GetFrontCoverAsync(Guid releaseId, CancellationToken ct);
+    /// <summary>
+    /// Front-Cover des Releases, sonst das Standard-Cover seiner Release-Gruppe, oder <c>null</c>,
+    /// wenn es keins gibt. Viele Länder-Ausgaben haben kein eigenes Bild.
+    /// </summary>
+    Task<EmbeddedPicture?> GetFrontCoverAsync(Guid releaseId, Guid? releaseGroupId, CancellationToken ct);
 }

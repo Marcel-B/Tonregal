@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
+using Tonregal.Infrastructure.Duplicates;
 using Tonregal.Infrastructure.Fingerprinting;
 using Tonregal.Infrastructure.Library;
 using Tonregal.Infrastructure.Import;
@@ -34,6 +35,7 @@ public static class DependencyInjection
         services.AddSingleton<InboxFileTracker>();
         services.AddScoped<IInboxImporter, InboxImporter>();
         services.AddScoped<ILibraryImporter, LibraryImporter>();
+        services.AddScoped<IDuplicateService, DuplicateService>();
         services.AddMetadataServices(configuration);
         return services;
     }
