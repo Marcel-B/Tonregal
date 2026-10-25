@@ -97,6 +97,17 @@ Dienst nicht, nennt das Script den Programmpfad; diesen unter Systemeinstellunge
 Sicherheit → Festplattenvollzugriff hinzufügen und das Script erneut ausführen. Nach `brew upgrade navidrome`
 ändert sich der Pfad, dann die Freigabe erneuern.
 
+**Metadaten-Abgleich:** Fingerprints berechnet `fpcalc` (Chromaprint, installiert das Deploy-Script).
+Für AcoustID braucht es einen kostenlosen Client-Key von https://acoustid.org/new-application, der in
+`/Volumes/T7/Musik/app/appsettings.Production.json` eingetragen wird:
+
+```json
+{ "Tonregal": { "Metadata": { "AcoustIdApiKey": "…" } } }
+```
+
+MusicBrainz-Antworten werden 30 Tage in der Datenbank gecacht; Anfragen sind auf 1/s (MusicBrainz)
+bzw. 3/s (AcoustID) begrenzt.
+
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf
 `/Volumes/T7/Musik/.tonregal-mount`), und starten nach einem Remount von selbst neu.
 

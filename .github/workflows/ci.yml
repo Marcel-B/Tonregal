@@ -19,6 +19,9 @@ jobs:
           cache: npm
           cache-dependency-path: src/Tonregal.Web/ClientApp/package-lock.json
 
+      - name: Chromaprint (fpcalc) für die Fingerprint-Tests
+        run: sudo apt-get update && sudo apt-get install -y libchromaprint-tools
+
       - name: Client bauen und testen
         working-directory: src/Tonregal.Web/ClientApp
         run: |

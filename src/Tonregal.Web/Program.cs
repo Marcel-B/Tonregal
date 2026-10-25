@@ -57,7 +57,7 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGroup("/api").MapTonregalApi().MapLibraryApi();
+app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi();
 app.MapHub<StatusHub>("/hub");
 app.MapFallbackToFile("index.html");
 

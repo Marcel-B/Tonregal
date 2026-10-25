@@ -5,8 +5,10 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
+import Button from 'primevue/button'
 import AlbumCover from '@/components/AlbumCover.vue'
-import { api, formatDuration, type AlbumDetail, type TrackDto } from '@/api'
+import MatchDialog from '@/components/MatchDialog.vue'
+import { api, formatDuration, type AlbumDetail, type FileDto, type TrackDto } from '@/api'
 
 const props = defineProps<{ id: number }>()
 const album = ref<AlbumDetail | null>(null)
@@ -28,6 +30,16 @@ function guests(track: TrackDto) {
 }
 
 const lossless = new Set(['Flac', 'Alac', 'Wav'])
+
+const matchTrack = ref<TrackDto | null>(null)
+const matchFile = ref<FileDto | null>(null)
+const matchVisible = ref(false)
+
+function openMatch(track: TrackDto) {
+  matchTrack.value = track
+  matchFile.value = track.files[0] ?? null
+  matchVisible.value = true
+}
 </script>
 
 <template>
@@ -75,6 +87,12 @@ const lossless = new Set(['Flac', 'Alac', 'Wav'])
           </div>
         </template>
       </Column>
+      <Column class="w-12">
+        <template #body="{ data }">
+          <Button icon="pi pi-search" text rounded size="small" aria-label="Abgleichen" title="Bei AcoustID/MusicBrainz abgleichen" @click="openMatch(data)" />
+        </template>
+      </Column>
     </DataTable>
+    <MatchDialog v-model:visible="matchVisible" :track="matchTrack" :file="matchFile" />
   </template>
 </template>

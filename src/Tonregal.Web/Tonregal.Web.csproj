@@ -23,17 +23,16 @@
     <None Include="$(ClientAppRoot)**" Exclude="$(ClientAppRoot)node_modules/**" />
   </ItemGroup>
 
-  <!-- Beim Publish die Vue-SPA bauen; Vite schreibt nach wwwroot. -->
-  <Target Name="BuildClientApp" BeforeTargets="ComputeFilesToPublish" Condition="'$(SkipClientApp)' != 'true'">
+  <!-- Beim Publish die Vue-SPA bauen; Vite schreibt nach wwwroot. Das muss vor dem Build passieren,
+       damit die Static-Web-Assets (inkl. Kompression) die neuen, gehashten Dateien sehen und nicht
+       die vom letzten Build. -->
+  <Target Name="BuildClientApp" BeforeTargets="BeforeBuild" Condition="'$(_IsPublishing)' == 'true' And '$(SkipClientApp)' != 'true'">
     <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm ci" />
     <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm run build" />
+    <!-- wwwroot wurde bei der Auswertung des Projekts noch mit dem alten Stand eingelesen. -->
     <ItemGroup>
-      <ClientDist Include="wwwroot/**" />
-      <ResolvedFileToPublish Include="@(ClientDist->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
-        <RelativePath>wwwroot/%(ClientDist.RecursiveDir)%(ClientDist.Filename)%(ClientDist.Extension)</RelativePath>
-        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-      </ResolvedFileToPublish>
+      <Content Remove="wwwroot/**" />
+      <Content Include="wwwroot/**" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 

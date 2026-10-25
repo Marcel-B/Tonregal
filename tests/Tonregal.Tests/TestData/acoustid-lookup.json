@@ -1,0 +1,7 @@
+{
+  "status": "ok",
+  "results": [
+    { "id": "dddddddd-0000-0000-0000-000000000002", "score": 0.42, "recordings": [ { "id": "eeeeeeee-0000-0000-0000-000000000002" } ] },
+    { "id": "dddddddd-0000-0000-0000-000000000001", "score": 0.97, "recordings": [ { "id": "6f0e1a5c-6a43-4f4e-9b5c-2f6c2b2f1a11" } ] }
+  ]
+}

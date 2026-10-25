@@ -1,0 +1,43 @@
+{
+  "id": "6f0e1a5c-6a43-4f4e-9b5c-2f6c2b2f1a11",
+  "title": "Zweiter Song",
+  "length": 2040,
+  "disambiguation": "",
+  "video": false,
+  "artist-credit": [
+    { "name": "Testband", "joinphrase": " feat. ", "artist": { "id": "11111111-1111-1111-1111-111111111111", "name": "Testband", "sort-name": "Testband" } },
+    { "name": "Gast", "joinphrase": "", "artist": { "id": "22222222-2222-2222-2222-222222222222", "name": "Gast", "sort-name": "Gast" } }
+  ],
+  "releases": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000003",
+      "title": "Best of Testband",
+      "status": "Official",
+      "date": "2019-03-01",
+      "country": "DE",
+      "artist-credit": [ { "name": "Testband", "joinphrase": "", "artist": { "id": "11111111-1111-1111-1111-111111111111", "name": "Testband", "sort-name": "Testband" } } ],
+      "release-group": { "id": "bbbbbbbb-0000-0000-0000-000000000003", "title": "Best of Testband", "primary-type": "Album", "secondary-types": ["Compilation"] },
+      "media": [ { "position": 1, "format": "CD", "track-count": 18, "track-offset": 4, "tracks": [ { "id": "cccccccc-0000-0000-0000-000000000003", "number": "5", "position": 5, "title": "Zweiter Song", "length": 2040 } ] } ]
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000002",
+      "title": "Zweiter Song",
+      "status": "Official",
+      "date": "2024-01-12",
+      "country": "XW",
+      "artist-credit": [ { "name": "Testband", "joinphrase": "", "artist": { "id": "11111111-1111-1111-1111-111111111111", "name": "Testband", "sort-name": "Testband" } } ],
+      "release-group": { "id": "bbbbbbbb-0000-0000-0000-000000000002", "title": "Zweiter Song", "primary-type": "Single", "secondary-types": [] },
+      "media": [ { "position": 1, "format": "Digital Media", "track-count": 1, "track-offset": 0, "tracks": [ { "id": "cccccccc-0000-0000-0000-000000000002", "number": "1", "position": 1, "title": "Zweiter Song", "length": 2040 } ] } ]
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000001",
+      "title": "Testalbum",
+      "status": "Official",
+      "date": "2024-03-01",
+      "country": "XE",
+      "artist-credit": [ { "name": "Testband", "joinphrase": "", "artist": { "id": "11111111-1111-1111-1111-111111111111", "name": "Testband", "sort-name": "Testband" } } ],
+      "release-group": { "id": "bbbbbbbb-0000-0000-0000-000000000001", "title": "Testalbum", "primary-type": "Album", "secondary-types": [] },
+      "media": [ { "position": 1, "format": "Digital Media", "track-count": 3, "track-offset": 1, "tracks": [ { "id": "cccccccc-0000-0000-0000-000000000001", "number": "2", "position": 2, "title": "Zweiter Song", "length": 2040 } ] } ]
+    }
+  ]
+}
