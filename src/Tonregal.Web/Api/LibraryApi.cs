@@ -186,7 +186,7 @@ public static class LibraryApi
         return api;
     }
 
-    private static string AudioContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    internal static string AudioContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
         ".mp3" => "audio/mpeg",
         ".flac" => "audio/flac",

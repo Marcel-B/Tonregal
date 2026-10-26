@@ -174,6 +174,20 @@ rclone config create nextcloud webdav vendor=nextcloud \
 rclone lsd nextcloud:Musik   # Test
 ```
 
+**Player:** *Abspielen* auf der Albumseite (oder ▶ an einem Track) füllt die Warteschlange; die Leiste
+unten zeigt, was läuft, und lässt sich auch im Sperrbildschirm und mit Kopfhörertasten steuern. Das Audio
+kommt von Navidrome, Tonregal reicht es nur durch; so zählt Navidrome die Wiedergaben (nach der Hälfte,
+spätestens nach 4 Minuten) und ein dort für den Player *Tonregal* eingestelltes Transcoding greift.
+Kennt Navidrome eine frisch übernommene Datei noch nicht (Scan alle 15 Minuten), spielt Tonregal sie direkt.
+Die URL setzt das Deploy-Script; Benutzer und Passwort des Navidrome-Kontos gehören in
+`appsettings.Production.json`:
+
+```json
+{ "Tonregal": { "Navidrome": { "User": "…", "Password": "…" } } }
+```
+
+Am iPhone in Safari *Teilen → Zum Home-Bildschirm* wählen, dann startet Tonregal wie eine App.
+
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf
 `/Volumes/T7/Musik/.tonregal-mount`), und starten nach einem Remount von selbst neu.
 

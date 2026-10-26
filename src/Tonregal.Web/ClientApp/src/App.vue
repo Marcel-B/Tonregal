@@ -3,11 +3,14 @@
 import { onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Toast from 'primevue/toast'
+import PlayerBar from './components/PlayerBar.vue'
 import { routes } from './router'
 import { useStatusStore } from './stores/status'
+import { usePlayerStore } from './stores/player'
 
 const status = useStatusStore()
 const route = useRoute()
+const player = usePlayerStore()
 onMounted(() => status.connect())
 
 /** Unterseiten wie /library/albums/1 markieren ihren Navigationspunkt mit. */
@@ -16,7 +19,7 @@ const isActive = (path: string) => (path === '/' ? route.path === '/' : route.pa
 
 <template>
   <div class="min-h-screen flex flex-col md:flex-row">
-    <nav class="md:w-56 shrink-0 border-b md:border-b-0 md:border-r border-surface-200 dark:border-surface-800 p-4 flex md:flex-col gap-1">
+    <nav :class="player.current && 'md:pb-24'" class="md:w-56 shrink-0 border-b md:border-b-0 md:border-r border-surface-200 dark:border-surface-800 p-4 flex md:flex-col gap-1">
       <div class="font-semibold text-lg mb-0 md:mb-4 mr-4 md:mr-0">Tonregal</div>
       <RouterLink
         v-for="item in routes"
@@ -33,9 +36,10 @@ const isActive = (path: string) => (path === '/' ? route.path === '/' : route.pa
         <span class="hidden sm:inline">{{ status.connected ? 'Live' : 'Offline' }}</span>
       </div>
     </nav>
-    <main class="flex-1 p-4 md:p-8">
+    <main class="flex-1 p-4 md:p-8" :class="player.current && 'pb-28 md:pb-28'">
       <RouterView />
     </main>
+    <PlayerBar />
     <Toast />
   </div>
 </template>
