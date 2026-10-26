@@ -47,14 +47,21 @@ describe('DashboardView', () => {
   })
 
   it('markiert zwei Fehlschläge in Folge rot und startet ein Backup', async () => {
-    const failed = run(3, 'Failed', { log: 'Failed to sync: 507 Insufficient Storage' })
+    const log = 'Library: 3 Datei(en) übertragen\nFailed to copy: Put "https://cloud.example/remote.php/dav/files/a/b.flac"\nFailed to sync: 507 Insufficient Storage'
+    const failed = run(3, 'Failed', { log })
     const { fetch, wrapper } = mountView({ status: { ...ok.status, lastRun: failed, consecutiveFailures: 2 }, runs: [failed] })
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="backup-failing"]').text()).toContain('507 Insufficient Storage')
+    const banner = wrapper.get('[data-testid="backup-failing"]').text()
+    expect(banner).toContain('507 Insufficient Storage')
+    expect(banner).not.toContain('remote.php')
+    expect(wrapper.find('[data-testid="backup-log"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="backup-run"]').trigger('click')
+    expect(wrapper.get('[data-testid="backup-log"]').text()).toContain('remote.php')
     await wrapper.get('[data-testid="run-backup"]').trigger('click')
     await flushPromises()
     expect(fetch).toHaveBeenCalledWith('/api/backup/run', expect.objectContaining({ method: 'POST' }))
+    expect(wrapper.find('[data-testid="backup-failing"]').exists()).toBe(false)
     await wrapper.get('[data-testid="cancel-backup"]').trigger('click')
     await flushPromises()
     expect(fetch).toHaveBeenCalledWith('/api/backup/cancel', expect.objectContaining({ method: 'POST' }))

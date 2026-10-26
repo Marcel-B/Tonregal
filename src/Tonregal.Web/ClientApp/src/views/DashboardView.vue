@@ -52,7 +52,15 @@ const tiles = computed<{ key: string; label: string; value: string | number | un
 ])
 
 const backup = computed(() => store.backup)
-const failing = computed(() => (backup.value?.consecutiveFailures ?? 0) >= 2)
+// Während ein neuer Lauf läuft, nicht mehr warnen – der kann es ja schon richten.
+const failing = computed(() => (backup.value?.consecutiveFailures ?? 0) >= 2 && !backup.value?.running)
+// Nur die letzte Zeile des Logs, ohne die langen WebDAV-URLs; das ganze Log steht in der Historie.
+const failureReason = computed(() => {
+  const lines = (backup.value?.lastRun?.log ?? '').split('\n').filter((l) => l.trim())
+  return lines.at(-1)?.replace(/https?:\/\/\S+/g, '…') ?? ''
+})
+const expanded = ref<number | null>(null)
+const toggleLog = (run: BackupRun) => (expanded.value = expanded.value === run.id || !run.log ? null : run.id)
 const dateTime = (iso: string) => new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })
 const duration = (run: BackupRun) => {
   if (!run.finishedAt) return ''
@@ -107,7 +115,8 @@ const cancelBackup = () => call(() => api.cancelBackup())
       <Button v-else label="Jetzt sichern" icon="pi pi-cloud-upload" size="small" severity="secondary" data-testid="run-backup" @click="runBackup" />
     </div>
     <Message v-if="failing" severity="error" class="mb-3" data-testid="backup-failing">
-      Die letzten {{ backup?.consecutiveFailures }} Backups sind fehlgeschlagen. {{ backup?.lastRun?.log }}
+      <div>Die letzten {{ backup?.consecutiveFailures }} Backups sind fehlgeschlagen. Details per Klick in der Historie.</div>
+      <div v-if="failureReason" class="text-sm truncate" :title="failureReason">{{ failureReason }}</div>
     </Message>
     <p class="text-sm text-surface-500 mb-4" data-testid="backup-summary">
       <template v-if="backup?.running">{{ backup.step ?? 'Läuft' }} …</template>
@@ -130,13 +139,25 @@ const cancelBackup = () => call(() => api.cancelBackup())
         </tr>
       </thead>
       <tbody>
-        <tr v-for="run in runs" :key="run.id" class="border-t border-surface-200 dark:border-surface-700" :title="run.log ?? ''" data-testid="backup-run">
-          <td class="py-1.5">{{ dateTime(run.startedAt) }}</td>
-          <td class="py-1.5"><Tag :value="states[run.status].label" :severity="states[run.status].severity" /></td>
-          <td class="py-1.5 text-right tabular-nums">{{ run.filesSynced }}</td>
-          <td class="py-1.5 text-right tabular-nums">{{ formatBytes(run.bytesSynced) }}</td>
-          <td class="py-1.5 text-right tabular-nums">{{ duration(run) }}</td>
-        </tr>
+        <template v-for="run in runs" :key="run.id">
+          <tr
+            class="border-t border-surface-200 dark:border-surface-700"
+            :class="{ 'cursor-pointer': run.log }"
+            data-testid="backup-run"
+            @click="toggleLog(run)"
+          >
+            <td class="py-1.5">{{ dateTime(run.startedAt) }}</td>
+            <td class="py-1.5"><Tag :value="states[run.status].label" :severity="states[run.status].severity" /></td>
+            <td class="py-1.5 text-right tabular-nums">{{ run.filesSynced }}</td>
+            <td class="py-1.5 text-right tabular-nums">{{ formatBytes(run.bytesSynced) }}</td>
+            <td class="py-1.5 text-right tabular-nums">{{ duration(run) }}</td>
+          </tr>
+          <tr v-if="expanded === run.id">
+            <td colspan="5" class="pb-2">
+              <pre class="text-xs whitespace-pre-wrap break-all max-h-60 overflow-auto bg-surface-100 dark:bg-surface-800 rounded p-2" data-testid="backup-log">{{ run.log }}</pre>
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </section>
