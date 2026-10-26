@@ -14,14 +14,15 @@ public static class InboxUpload
 
     /// <returns>Pfad relativ zur Inbox, mit <c>/</c> getrennt.</returns>
     /// <exception cref="ArgumentException">Pfad unzulässig oder kein unterstütztes Audioformat.</exception>
-    public static async Task<string> SaveAsync(string inboxRoot, string relativePath, Stream content, CancellationToken ct)
+    /// <param name="ingest">Nur die Ingest-API darf nach <c>_api/</c> schreiben.</param>
+    public static async Task<string> SaveAsync(string inboxRoot, string relativePath, Stream content, CancellationToken ct, bool ingest = false)
     {
         var segments = relativePath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => s.Trim())
             .ToList();
         if (segments.Count == 0 || segments.Any(s => s is "" or "." or ".." || s.StartsWith('.') || s.IndexOfAny(InvalidChars) >= 0))
             throw new ArgumentException($"Ungültiger Pfad: {relativePath}");
-        if (segments[0] == InboxImporter.ApiFolder)
+        if ((segments[0] == InboxImporter.ApiFolder) != ingest)
             throw new ArgumentException($"{InboxImporter.ApiFolder} ist der Ingest-API vorbehalten");
         var extension = Path.GetExtension(segments[^1]);
         if (!TagLibTagReader.SupportedExtensions.Contains(extension))

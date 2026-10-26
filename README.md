@@ -174,6 +174,26 @@ rclone config create nextcloud webdav vendor=nextcloud \
 rclone lsd nextcloud:Musik   # Test
 ```
 
+**Ingest-API:** Eigene Stücke (z. B. aus Tonwerk-AI) kommen ohne Abgleich und Review direkt in die
+Library. Je Quelle einen API-Key in `appsettings.Production.json` eintragen; der Key bestimmt die Quelle:
+
+```json
+{ "Tonregal": { "Ingest": { "Keys": { "tonwerk-ai": "<openssl rand -hex 32>" } } } }
+```
+
+```bash
+curl -H "X-Api-Key: $KEY" http://oi-o-mat.tail6105c0.ts.net:5100/api/ingest \
+  -F file=@track.flac -F cover=@cover.jpg \
+  -F 'metadata={"externalId":"song-42","title":"Nachtfahrt","artist":"Tonwerk","album":"Projekt Nacht","year":2026,"track":3,"genre":"Synthwave","bpm":128,"key":"Am"}'
+```
+
+Pflicht sind `externalId`, `title` und `artist`; derselbe `externalId` ein zweites Mal legt nichts neu an
+(Antwort 200 statt 202, ist die Übernahme gescheitert, wird sie wiederholt). Die Antwort trägt die Job-ID,
+den Stand liefert `GET /api/ingest/{id}` (`Imported` mit `libraryPath` = fertig); der SignalR-Hub meldet ihn
+zusätzlich als `ingestStatus`. Ohne Album wird das Stück eine Single unter `{Artist}/{Titel}/`, sonst landet
+es unter `{Artist}/{Jahr} - {Album}/`. Liegt dieselbe Datei byte-gleich schon in der Library, wird sie
+verworfen. Fehlende BPM- oder Tonart-Werte ergänzt nachts die Analyse.
+
 **Player:** *Abspielen* auf der Albumseite (oder ▶ an einem Track) füllt die Warteschlange; die Leiste
 unten zeigt, was läuft, und lässt sich auch im Sperrbildschirm und mit Kopfhörertasten steuern. Das Audio
 kommt von Navidrome, Tonregal reicht es nur durch; so zählt Navidrome die Wiedergaben (nach der Hälfte,

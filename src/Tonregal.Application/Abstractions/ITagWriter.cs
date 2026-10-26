@@ -18,6 +18,13 @@ public interface ITagWriter
     /// <exception cref="InvalidDataException">Datei ist kein schreibbares Audioformat.</exception>
     void WriteBasic(string path, string title, IReadOnlyList<string> artists, string albumArtist, string album);
 
+    /// <summary>
+    /// Für Stücke aus der Ingest-API: Titel, Artist, Album, Jahr, Tracknummer, Genre, BPM und Tonart;
+    /// leere Werte lassen das Feld, wie es ist. Ein Cover wird nur eingebettet, wenn die Datei noch keins hat.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Datei ist kein schreibbares Audioformat.</exception>
+    void WriteIngest(string path, IngestMetadata metadata, string album, EmbeddedPicture? cover);
+
     /// <summary>Setzt BPM (gerundet, TBPM/BPM) und Tonart (TKEY/INITIALKEY); <c>null</c> lässt den Wert, wie er ist.</summary>
     /// <exception cref="InvalidDataException">Datei ist kein schreibbares Audioformat.</exception>
     void WriteAnalysis(string path, double? bpm, string? key);

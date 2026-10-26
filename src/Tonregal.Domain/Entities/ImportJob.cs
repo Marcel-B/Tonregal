@@ -44,6 +44,9 @@ public class ImportJob
 
     /// <summary>Idempotenzschlüssel der Ingest-API (Quelle + externalId).</summary>
     public string? ExternalId { get; set; }
+
+    /// <summary>Metadaten, die der Aufrufer der Ingest-API mitgeschickt hat, als JSON.</summary>
+    public string? IngestMetadata { get; set; }
     public int? AudioFileId { get; set; }
     public AudioFile? AudioFile { get; set; }
     public string? Error { get; set; }

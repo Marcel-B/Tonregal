@@ -38,6 +38,8 @@ public static class DependencyInjection
         services.AddSingleton<InboxFileTracker>();
         services.AddScoped<IInboxImporter, InboxImporter>();
         services.AddScoped<ILibraryImporter, LibraryImporter>();
+        services.Configure<IngestOptions>(configuration.GetSection(IngestOptions.SectionName));
+        services.AddScoped<IIngestService, IngestService>();
         services.AddScoped<IDuplicateService, DuplicateService>();
         services.AddScoped<IReleaseAligner, ReleaseAligner>();
         services.AddMetadataServices(configuration);
