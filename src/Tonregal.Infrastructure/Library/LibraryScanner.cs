@@ -113,7 +113,7 @@ public sealed class LibraryScanner(
         var removed = existing.Values.Where(f => !seen.Contains(f.Path)).ToList();
         db.AudioFiles.RemoveRange(removed);
         await db.SaveChangesAsync(ct);
-        await RemoveOrphansAsync(ct);
+        await RemoveOrphansAsync(db, ct);
         progress?.Report(new ScanProgress(processed, paths.Count, null));
 
         var result = new ScanResult(added, updated, removed.Count, unchanged, errors, stopwatch.Elapsed);
@@ -213,7 +213,7 @@ public sealed class LibraryScanner(
     }
 
     /// <summary>Entfernt Tracks ohne Dateien, Alben ohne Tracks und Artists ohne Alben und Tracks.</summary>
-    private async Task RemoveOrphansAsync(CancellationToken ct)
+    internal static async Task RemoveOrphansAsync(TonregalDbContext db, CancellationToken ct)
     {
         await db.Tracks.Where(t => !t.Files.Any()).ExecuteDeleteAsync(ct);
         await db.Albums.Where(a => !a.Tracks.Any()).ExecuteDeleteAsync(ct);

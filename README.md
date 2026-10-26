@@ -120,7 +120,22 @@ dieses Release. Die Dateien in der Inbox werden dabei nicht verändert.
 dann Tags (MP3 als ID3v2.4, Feldnamen wie Picard) und Cover in eine Kopie, prüft sie, benennt sie atomar
 nach der Ordnerregel `Library/{AlbumArtist}/{Jahr} - {Album}/{Disc-}{NN} - {Titel}.{ext}` um und löscht
 erst dann das Original aus der Inbox. `cover.jpg` im Albumordner kommt aus der Datei oder dem Cover Art
-Archive. *Verwerfen* lässt die Datei in der Inbox liegen, ohne sie erneut abzugleichen.
+Archive (hat die Ausgabe dort keins, das Standard-Cover des Albums); fehlt es, holt *Cover suchen* auf
+der Albumseite es nach. Liegen schon Tracks desselben Albums in der Library oder wurden welche aus
+demselben Inbox-Ordner übernommen, bekommt jeder weitere Track deren Release, sofern er darauf steht:
+Navidrome trennt Alben nach MusicBrainz-Release-ID. Tragen die Tracks eines Albums trotzdem verschiedene
+Ausgaben, bringt *Ausgaben vereinheitlichen* auf der Albumseite alle auf das Release der Mehrheit.
+*Verwerfen* lässt die Datei in der Inbox liegen, ohne sie erneut abzugleichen.
+Dateien und Ordner lassen sich auch per Drag & Drop auf die Inbox-Seite hochladen; lose Dateien landen
+gemeinsam in einem Ordner `Upload {Datum Uhrzeit}`.
+
+**Dubletten:** Nach jedem Library-Scan sucht Tonregal Dateien mit gleichem Hash, gleicher Aufnahme
+(MusicBrainz-Recording-ID oder AcoustID) oder gleichem Interpret, Titel und Dauer (±2 s). MP3 und FLAC
+desselben Tracks gelten nicht als Dublette. Auf der Seite *Dubletten* hört man jede Datei 10 Sekunden an
+und wählt, was bleibt; der Vorschlag ist verlustfrei vor verlustbehaftet, dann die höhere Bitrate. Der
+Rest wandert nach `Library/.trash/{Datum}/` und wird nach 30 Tagen gelöscht. Eine Inbox-Datei, die
+byte-gleich schon in der Library liegt, geht direkt in den Papierkorb; ist nur der Zielplatz belegt,
+landet sie als `… (2)` daneben und erscheint als Dublette.
 
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf
 `/Volumes/T7/Musik/.tonregal-mount`), und starten nach einem Remount von selbst neu.

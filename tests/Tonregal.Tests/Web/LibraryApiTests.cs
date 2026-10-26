@@ -5,8 +5,12 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
+using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Api;
 using Tonregal.Web.Library;
 
@@ -24,7 +28,8 @@ public sealed class LibraryApiTests : IDisposable
     {
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b
             .UseEnvironment("Testing")
-            .UseSetting("Tonregal:MusicRoot", _library.MusicRoot));
+            .UseSetting("Tonregal:MusicRoot", _library.MusicRoot)
+            .ConfigureTestServices(services => services.AddScoped<ICoverArtSource, FakeCovers>()));
         _client = _factory.CreateClient();
     }
 
@@ -102,5 +107,52 @@ public sealed class LibraryApiTests : IDisposable
         var response = await _client.GetAsync($"/api/library/files/{fileId}/candidates", ct);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.Contains("API-Key fehlt", await response.Content.ReadAsStringAsync(ct));
+    }
+
+    private static readonly Guid Release = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
+
+    [Fact]
+    public async Task Cover_nachholen_legt_cover_jpg_an()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await WaitForScanAsync();
+        int samplerId;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TonregalDbContext>();
+            var sampler = await db.Albums.SingleAsync(a => a.Title == "Sampler", ct);
+            sampler.MusicBrainzReleaseId = Release;
+            // Release-Gruppe kommt aus dem MusicBrainz-Cache statt aus dem Netz.
+            db.MetadataCache.Add(new MetadataCacheEntry
+            {
+                Key = $"musicbrainz:release:{Release}",
+                Json = await File.ReadAllTextAsync(Path.Combine(TestLibrary.TestData, "musicbrainz-release.json"), ct),
+                FetchedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync(ct);
+            samplerId = sampler.Id;
+        }
+
+        Assert.True((await _client.GetFromJsonAsync<AlbumDetail>($"/api/library/albums/{samplerId}", Json, ct))!.CanFetchCover);
+        var response = await _client.PostAsync($"/api/library/albums/{samplerId}/cover", null, ct);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.True(File.Exists(Path.Combine(_library.Library, "Various Artists", "2020 - Sampler", "cover.jpg")));
+        Assert.Equal(Guid.Parse("bbbbbbbb-0000-0000-0000-000000000001"), FakeCovers.LastGroup);
+        Assert.False((await _client.GetFromJsonAsync<AlbumDetail>($"/api/library/albums/{samplerId}", Json, ct))!.CanFetchCover);
+        var cover = await _client.GetAsync($"/api/library/albums/{samplerId}/cover", ct);
+        Assert.Equal(FakeCovers.Cover.Data, await cover.Content.ReadAsByteArrayAsync(ct));
+    }
+
+    private sealed class FakeCovers : ICoverArtSource
+    {
+        public static readonly EmbeddedPicture Cover = new(File.ReadAllBytes(Path.Combine(TestLibrary.TestData, "cover.jpg")), "image/jpeg");
+        public static Guid? LastGroup { get; private set; }
+
+        public Task<EmbeddedPicture?> GetFrontCoverAsync(Guid releaseId, Guid? releaseGroupId, CancellationToken ct)
+        {
+            LastGroup = releaseGroupId;
+            return Task.FromResult<EmbeddedPicture?>(Cover);
+        }
     }
 }

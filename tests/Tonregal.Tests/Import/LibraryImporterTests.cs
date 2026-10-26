@@ -26,6 +26,7 @@ public sealed class LibraryImporterTests : IDisposable
     private readonly TagLibTagReader _reader = new();
     private readonly FakeCovers _covers = new();
     private ReleaseTrack _track = TagLibTagWriterTests.Track();
+    private readonly Dictionary<Guid, ReleaseTrack> _otherReleases = [];
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private string Inbox => Path.Combine(_library.MusicRoot, "Inbox");
@@ -46,7 +47,7 @@ public sealed class LibraryImporterTests : IDisposable
     }
 
     private LibraryImporter Importer() => new(
-        _db, _reader, new TagLibTagWriter(), new FakeLookup(() => _track), _covers,
+        _db, _reader, new TagLibTagWriter(), new FakeLookup(release => _otherReleases.GetValueOrDefault(release) ?? _track), _covers,
         Microsoft.Extensions.Options.Options.Create(Options), TimeProvider.System, NullLogger<LibraryImporter>.Instance);
 
     private async Task<ImportJob> MatchedJobAsync(string testFile, string relativePath)
@@ -120,19 +121,19 @@ public sealed class LibraryImporterTests : IDisposable
     }
 
     [Fact]
-    public async Task Belegtes_Ziel_laesst_die_Inbox_Datei_unveraendert()
+    public async Task Belegtes_Ziel_landet_daneben_fuer_die_Dublettenpruefung()
     {
         var job = await MatchedJobAsync("song1.mp3", "01.mp3");
-        var source = Path.Combine(Inbox, "01.mp3");
-        var before = File.ReadAllBytes(source);
+        var occupied = Path.Combine(_library.Library, AlbumFolder, "01 - A Victory of Love.mp3");
         _library.Copy("song3.m4a", Path.Combine(_library.Library, AlbumFolder), "01 - A Victory of Love.mp3");
+        var before = File.ReadAllBytes(occupied);
 
         var result = await Importer().ImportAsync(job.Id, Ct);
 
-        Assert.Equal(ImportState.Matched, result.State);
-        Assert.Equal($"In der Library liegt schon {AlbumFolder}/01 - A Victory of Love.mp3", result.Error);
-        Assert.Equal(before, File.ReadAllBytes(source));
-        Assert.DoesNotContain(Directory.GetFiles(Path.Combine(_library.Library, AlbumFolder)), f => Path.GetFileName(f).StartsWith('.'));
+        Assert.Equal(ImportState.Imported, result.State);
+        Assert.Equal($"{AlbumFolder}/01 - A Victory of Love (2).mp3", result.LibraryPath);
+        Assert.Equal(before, File.ReadAllBytes(occupied));
+        Assert.False(File.Exists(Path.Combine(Inbox, "01.mp3")));
     }
 
     [Fact]
@@ -166,13 +167,38 @@ public sealed class LibraryImporterTests : IDisposable
         Assert.Equal(AlbumKind.Compilation, (await _db.Albums.SingleAsync(Ct)).Kind);
     }
 
-    private sealed class FakeLookup(Func<ReleaseTrack> track) : IMetadataLookup
+    [Fact]
+    public async Task Tracks_eines_Ordners_bekommen_dasselbe_Release()
+    {
+        var first = await MatchedJobAsync("song1.mp3", "Forever Young/01.mp3");
+        Assert.Null((await Importer().ImportAsync(first.Id, Ct)).Error);
+
+        // Der zweite Track wurde auf einer anderen Ausgabe derselben Release-Group erkannt.
+        var otherRelease = Guid.NewGuid();
+        var second = await MatchedJobAsync("song2.flac", "Forever Young/02.flac");
+        second.SelectedReleaseId = otherRelease;
+        _otherReleases[otherRelease] = _track with { ReleaseId = otherRelease, Country = "US" };
+        await _db.SaveChangesAsync(Ct);
+
+        var result = await Importer().ImportAsync(second.Id, Ct);
+
+        Assert.Null(result.Error);
+        Assert.Equal(_track.ReleaseId, result.SelectedReleaseId);
+        Assert.Equal(_track.ReleaseId, _reader.Read(Path.Combine(_library.Library, result.LibraryPath!)).Tags.MusicBrainzReleaseId);
+    }
+
+    private sealed class FakeLookup(Func<Guid, ReleaseTrack?> track) : IMetadataLookup
     {
         public Task<IReadOnlyList<RecordingCandidate>> LookupAsync(Fingerprint fingerprint, CancellationToken ct) =>
             throw new NotSupportedException();
 
         public Task<ReleaseTrack?> GetReleaseTrackAsync(Guid releaseId, Guid recordingId, CancellationToken ct) =>
-            Task.FromResult<ReleaseTrack?>(track());
+            Task.FromResult(track(releaseId));
+
+        public Task<Guid?> GetReleaseGroupIdAsync(Guid releaseId, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<RecordingCandidate>> SearchByTagsAsync(string artist, string title, string? album, int durationMs, CancellationToken ct) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeCovers : ICoverArtSource
@@ -181,7 +207,7 @@ public sealed class LibraryImporterTests : IDisposable
         public int Calls { get; private set; }
         public bool Unavailable { get; set; }
 
-        public Task<EmbeddedPicture?> GetFrontCoverAsync(Guid releaseId, CancellationToken ct)
+        public Task<EmbeddedPicture?> GetFrontCoverAsync(Guid releaseId, Guid? releaseGroupId, CancellationToken ct)
         {
             Calls++;
             return Unavailable

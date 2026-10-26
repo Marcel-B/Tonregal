@@ -57,6 +57,63 @@ public sealed record MbRecording(
     [property: JsonPropertyName("artist-credit")] List<MbArtistCredit>? ArtistCredit,
     [property: JsonPropertyName("releases")] List<MbRelease>? Releases);
 
+// Die Suche (/recording?query=) liefert Medien mit "track" (Einzahl) und "track-offset" statt "tracks".
+
+public sealed record MbSearchTrack(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("number")] string? Number,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("length")] int? Length);
+
+public sealed record MbSearchMedium(
+    [property: JsonPropertyName("position")] int Position,
+    [property: JsonPropertyName("format")] string? Format,
+    [property: JsonPropertyName("track-count")] int TrackCount,
+    [property: JsonPropertyName("track-offset")] int TrackOffset,
+    [property: JsonPropertyName("track")] List<MbSearchTrack>? Track);
+
+public sealed record MbSearchRelease(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("status")] string? Status,
+    [property: JsonPropertyName("date")] string? Date,
+    [property: JsonPropertyName("country")] string? Country,
+    [property: JsonPropertyName("artist-credit")] List<MbArtistCredit>? ArtistCredit,
+    [property: JsonPropertyName("release-group")] MbReleaseGroup? ReleaseGroup,
+    [property: JsonPropertyName("media")] List<MbSearchMedium>? Media);
+
+public sealed record MbSearchRecording(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("score")] int Score,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("length")] int? Length,
+    [property: JsonPropertyName("artist-credit")] List<MbArtistCredit>? ArtistCredit,
+    [property: JsonPropertyName("releases")] List<MbSearchRelease>? Releases)
+{
+    /// <summary>Dieselbe Form wie bei einer Recording-Abfrage, damit die Kandidaten gleich entstehen.</summary>
+    public MbRecording ToRecording() => new(
+        Id, Title, Length, ArtistCredit,
+        Releases?.Select(r => new MbRelease(
+            r.Id, r.Title, r.Status, r.Date, r.Country, r.ArtistCredit, r.ReleaseGroup,
+            r.Media?.Select(m => new MbMedium(
+                m.Position, m.Format, m.TrackCount,
+                m.Track?.Select((t, i) => new MbTrack(t.Id, t.Number, m.TrackOffset + i + 1, t.Title, t.Length, null)).ToList())).ToList())).ToList());
+}
+
+public sealed record MbRecordingSearch(
+    [property: JsonPropertyName("recordings")] List<MbSearchRecording>? Recordings);
+
+public sealed record MbReleaseHit(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("score")] int Score,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("status")] string? Status,
+    [property: JsonPropertyName("date")] string? Date,
+    [property: JsonPropertyName("release-group")] MbReleaseGroup? ReleaseGroup);
+
+public sealed record MbReleaseSearch(
+    [property: JsonPropertyName("releases")] List<MbReleaseHit>? Releases);
+
 public static class MbArtistCreditExtensions
 {
     /// <summary>Anzeigename wie auf dem Release, z. B. "Daft Punk feat. Pharrell Williams".</summary>

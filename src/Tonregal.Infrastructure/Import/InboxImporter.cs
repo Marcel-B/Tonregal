@@ -140,9 +140,25 @@ public sealed partial class InboxImporter(
         try
         {
             var info = tagReader.Read(path);
-            tags = info.Tags;
+            tags = WithFileName(info.Tags, path);
             if (job.State == ImportState.New)
-                await FingerprintAsync(job, path, info, ct);
+            {
+                try
+                {
+                    await FingerprintAsync(job, path, info, tags, ct);
+                }
+                catch (InvalidDataException e)
+                {
+                    // Kein Fingerprint (kaputte Frames o. Ä.): dann wenigstens ein Vorschlag aus den Tags.
+                    logger.LogWarning("Inbox: kein Fingerprint für {Path}: {Message}", job.SourcePath, e.Message);
+                    job.Error = e.Message;
+                    await ReviewByTagsAsync(job, tags, "Kein Fingerprint (fpcalc konnte die Datei nicht lesen)", ct);
+                    return job;
+                }
+
+                if (await RejectIfInLibraryAsync(job, path, ct))
+                    return job;
+            }
         }
         catch (Exception e) when (e is InvalidDataException or IOException or UnauthorizedAccessException)
         {
@@ -168,6 +184,12 @@ public sealed partial class InboxImporter(
         }
 
         job.Error = null;
+        if (candidates.Count == 0)
+        {
+            await ReviewByTagsAsync(job, tags, "AcoustID kennt diese Aufnahme nicht", ct);
+            return job;
+        }
+
         job.Candidates = JsonSerializer.Serialize(candidates, Json);
         Decide(job, tags, candidates, AutoMatchScore);
         await db.SaveChangesAsync(ct);
@@ -177,13 +199,13 @@ public sealed partial class InboxImporter(
         return job;
     }
 
-    private async Task FingerprintAsync(ImportJob job, string path, AudioFileInfo info, CancellationToken ct)
+    private async Task FingerprintAsync(ImportJob job, string path, AudioFileInfo info, AudioTags tags, CancellationToken ct)
     {
         job.Format = info.Properties.Format;
         job.DurationMs = (int)info.Properties.Duration.TotalMilliseconds;
-        job.TagTitle = info.Tags.Title;
-        job.TagArtist = info.Tags.Artists.Count > 0 ? string.Join(", ", info.Tags.Artists) : info.Tags.AlbumArtist;
-        job.TagAlbum = info.Tags.Album;
+        job.TagTitle = tags.Title;
+        job.TagArtist = tags.Artists.Count > 0 ? string.Join(", ", tags.Artists) : tags.AlbumArtist;
+        job.TagAlbum = tags.Album;
         job.FileHash = await HashAsync(path, ct);
 
         var fingerprint = await fingerprints.ComputeAsync(path, ct);
@@ -194,6 +216,101 @@ public sealed partial class InboxImporter(
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Ohne Fingerprint-Treffer bleibt nur die Suche nach Titel und Artist aus den Tags. Das Ergebnis
+    /// ist immer ein Fall für Review: der Vorschlag ist plausibel, aber nicht am Audio geprüft.
+    /// </summary>
+    private async Task ReviewByTagsAsync(ImportJob job, AudioTags tags, string reason, CancellationToken ct)
+    {
+        IReadOnlyList<RecordingCandidate> found = [];
+        var artist = tags.Artists.FirstOrDefault() ?? tags.AlbumArtist;
+        if (tags.Title is { } title && !PlaceholderTitle().IsMatch(title.Trim()) && artist is not null)
+        {
+            try
+            {
+                found = await lookup.SearchByTagsAsync(artist, title, tags.Album, job.DurationMs, ct);
+                // „White Russians (Demo)“: Zusätze in Klammern stehen bei MusicBrainz oft nicht im Titel.
+                if (found.Count == 0 && Brackets().Replace(title, "").Trim() is { Length: > 0 } plain && plain != title.Trim())
+                    found = await lookup.SearchByTagsAsync(artist, plain, tags.Album, job.DurationMs, ct);
+            }
+            catch (ExternalToolUnavailableException e)
+            {
+                logger.LogWarning("Inbox: MusicBrainz-Suche für {Path} fehlgeschlagen: {Message}", job.SourcePath, e.Message);
+            }
+        }
+
+        // Ohne Fingerprint muss wenigstens die Länge stimmen; Treffer ohne Länge zählen nur, wenn
+        // MusicBrainz für keinen Treffer eine Länge kennt. Das Album aus den Tags geht vor.
+        var matching = found.Where(c => MatchesTags(c, tags)).ToList();
+        var anyLength = matching.Any(c => c.DurationMs is not null);
+        bool Fits(RecordingCandidate c) => job.DurationMs <= 0
+            || (c.DurationMs is { } length ? Math.Abs(length - job.DurationMs) <= DurationTolerance.TotalMilliseconds : !anyLength);
+        var fitting = matching.Where(Fits).ToList();
+        // Exakter Titel und exaktes Album vor „Sweet Sacrifice (remastered)“ auf der Deluxe Edition.
+        var selected = fitting
+            .OrderByDescending(c => tags.Album is { } album && c.ReleaseTitle is { } release && SameTitle(album, release))
+            .ThenByDescending(c => SameText(tags.Title!, c.Title))
+            .ThenByDescending(c => tags.Album is { } album && c.ReleaseTitle is { } release && SameText(album, release))
+            .FirstOrDefault();
+        job.Candidates = JsonSerializer.Serialize(found, Json);
+        job.MatchScore = null;
+        job.SelectedRecordingId = selected?.RecordingId;
+        job.SelectedReleaseId = selected?.ReleaseId;
+        job.State = ImportState.NeedsReview;
+        job.ReviewReason = selected is not null ? $"{reason}; Vorschlag nur über die Tags gefunden"
+            : matching.Count > 0 ? $"{reason}; Dauer {FormatDuration(job.DurationMs)} passt zu keinem Treffer über die Tags"
+            : reason;
+        if (selected is not null)
+            job.Error = null;
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Inbox: {Path} → {State} ({Count} Treffer über die Tags) {Reason}", job.SourcePath, job.State, found.Count, job.ReviewReason);
+    }
+
+    /// <summary>
+    /// Fehlt der Titel in den Tags (oder ist er ein Platzhalter), kommen Titel und gegebenenfalls
+    /// Artist aus dem Dateinamen: „Garbage - Use Me.mp3“, „03 - Song.mp3“, „Song.mp3“.
+    /// </summary>
+    internal static AudioTags WithFileName(AudioTags tags, string path)
+    {
+        if (tags.Title is { } current && !PlaceholderTitle().IsMatch(current.Trim()))
+            return tags;
+        var name = LeadingTrackNumber().Replace(Path.GetFileNameWithoutExtension(path), "").Trim();
+        if (name.Length == 0 || PlaceholderTitle().IsMatch(name))
+            return tags;
+
+        var parts = Separator().Split(name, 2);
+        if (parts.Length == 1)
+            return tags with { Title = name };
+        var (artist, title) = (parts[0].Trim(), parts[1].Trim());
+        if (title.Length == 0 || PlaceholderTitle().IsMatch(title))
+            return tags;
+        if (tags.Artists.Count == 0 && tags.AlbumArtist is null)
+            return tags with { Title = title, Artists = [artist] };
+        var known = tags.Artists.Append(tags.AlbumArtist ?? "").Any(a => a.Length > 0 && SameTitle(a, artist));
+        return tags with { Title = known ? title : name };
+    }
+
+    /// <summary>
+    /// Eine byte-gleiche Datei liegt schon in der Library: die Inbox-Kopie wandert in den Papierkorb
+    /// (<c>.trash/{Datum}/Inbox/…</c>), der Job ist erledigt.
+    /// </summary>
+    private async Task<bool> RejectIfInLibraryAsync(ImportJob job, string path, CancellationToken ct)
+    {
+        var existing = await db.AudioFiles.Where(f => f.FileHash == job.FileHash).Select(f => f.Path).FirstOrDefaultAsync(ct);
+        if (existing is null)
+            return false;
+
+        var o = options.Value;
+        LibraryTrash.Move(o.Trash, path, Path.Combine("Inbox", job.SourcePath), time.GetUtcNow());
+        LibraryImporter.RemoveEmptyFolders(Path.GetDirectoryName(path)!, Path.GetFullPath(o.Inbox));
+        Reject(job, ImportJob.AlreadyInLibrary + existing);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    /// <summary>Mindest-Score, wenn Titel und Interpret aus den Tags den Treffer bestätigen.</summary>
+    internal const double TagConfirmedScore = 0.75;
+
     /// <summary>Abweichung zwischen Datei und Aufnahme, ab der ein Kandidat nicht mehr in Frage kommt.</summary>
     private static readonly TimeSpan DurationTolerance = TimeSpan.FromSeconds(15);
 
@@ -203,6 +320,9 @@ public sealed partial class InboxImporter(
     /// </summary>
     internal static void Decide(ImportJob job, AudioTags tags, IReadOnlyList<RecordingCandidate> candidates, double autoMatchScore)
     {
+        // „Titel 12“, „Track 03“: Platzhalter vom Ripper, kein Titel.
+        if (tags.Title is { } placeholder && PlaceholderTitle().IsMatch(placeholder.Trim()))
+            tags = tags with { Title = null };
         job.SelectedRecordingId = null;
         job.SelectedReleaseId = null;
         job.ReviewReason = null;
@@ -220,6 +340,10 @@ public sealed partial class InboxImporter(
         var durationMismatch = good.Count == 0;
         if (durationMismatch)
             good = candidates.Where(c => c.Score >= Math.Min(autoMatchScore, bestScore)).ToList();
+        // Fremde Interpreten mit demselben Fingerprint (Cover-Versionen, falsche AcoustID-Zuordnung)
+        // aus dem Spiel nehmen, wenn es Treffer vom Interpreten aus den Tags gibt.
+        if (tags.Artists.Count > 0 && good.Any(c => c.Artists.Count > 0 && MatchesArtist(c, tags)))
+            good = good.Where(c => MatchesArtist(c, tags)).ToList();
 
         // Vorhandene MusicBrainz-IDs in den Tags haben Vorrang (Altbestand aus Picard o. Ä.), danach
         // Titel und Artist aus den Tags: AcoustID hängt an manchen Fingerprints auch fremde Songs.
@@ -240,12 +364,15 @@ public sealed partial class InboxImporter(
     private static string? ReviewReason(
         AudioTags tags, List<RecordingCandidate> good, RecordingCandidate selected, double bestScore, double autoMatchScore)
     {
-        if (bestScore < autoMatchScore)
+        // Etwas niedrigerer Score reicht, wenn Titel und Interpret aus den Tags passen.
+        if (bestScore < autoMatchScore && !(bestScore >= TagConfirmedScore && MatchesTags(selected, tags)))
             return $"Score {bestScore:P0} unter {autoMatchScore:P0}";
         if (tags.MusicBrainzRecordingId is { } recording && good.All(c => c.RecordingId != recording))
             return "MusicBrainz-ID in den Tags passt nicht zum Fingerprint";
         if (tags.Title is { } title)
             return MatchesTags(selected, tags) ? null : $"Tags passen zu keinem Treffer: „{title}“";
+        if (tags.Artists.Count > 0 && !MatchesArtist(selected, tags))
+            return $"Interpret passt zu keinem Treffer: „{string.Join(", ", tags.Artists)}“";
 
         // Ohne Titel in den Tags entscheidet nur der Fingerprint; dann muss er eindeutig sein.
         return good.FirstOrDefault(c => !SameSong(c, selected)) is { } other
@@ -263,8 +390,10 @@ public sealed partial class InboxImporter(
             .ToList();
 
     private static bool MatchesTags(RecordingCandidate c, AudioTags tags) =>
-        tags.Title is { } title && SameTitle(title, c.Title)
-        && (tags.Artists.Count == 0 || c.Artists.Count == 0 || tags.Artists.Any(a => c.Artists.Any(b => SameTitle(a, b))));
+        tags.Title is { } title && SameTitle(title, c.Title) && MatchesArtist(c, tags);
+
+    private static bool MatchesArtist(RecordingCandidate c, AudioTags tags) =>
+        tags.Artists.Count == 0 || c.Artists.Count == 0 || tags.Artists.Any(a => c.Artists.Any(b => SameTitle(a, b)));
 
     private static string FormatDuration(int ms) => $"{ms / 60000}:{ms / 1000 % 60:00}";
 
@@ -338,13 +467,75 @@ public sealed partial class InboxImporter(
         SameTitle(a.Title, b.Title)
         && (a.Artists.Count == 0 || b.Artists.Count == 0 || SameTitle(a.Artists[0], b.Artists[0]));
 
-    /// <summary>Gleich nach Normalisierung, oder einer enthält den anderen („Song (Remastered 2011)“).</summary>
+    /// <summary>
+    /// Gleich nach Normalisierung, einer enthält den anderen („Song (Remastered 2011)“) oder sie
+    /// unterscheiden sich nur durch einen Tippfehler („Talking Over Me“ / „Taking Over Me“).
+    /// </summary>
     internal static bool SameTitle(string a, string b)
     {
-        var x = TrackKey.Normalize(DroppedG().Replace(a, "$1ing"));
-        var y = TrackKey.Normalize(DroppedG().Replace(b, "$1ing"));
-        return x.Contains(y, StringComparison.Ordinal) || y.Contains(x, StringComparison.Ordinal);
+        var x = Comparable(a);
+        var y = Comparable(b);
+        if (x.Length == 0 || y.Length == 0)
+            return x == y;
+        if (x.Contains(y, StringComparison.Ordinal) || y.Contains(x, StringComparison.Ordinal))
+            return true;
+        var allowed = Math.Min(x.Length, y.Length) switch { < 6 => 0, < 12 => 1, _ => 2 };
+        return allowed > 0 && EditDistance(x, y, allowed) <= allowed;
     }
+
+    /// <summary>Gleich nach Normalisierung, ohne Tippfehler-Toleranz und ohne Zusätze wie „(demo)“.</summary>
+    internal static bool SameText(string a, string b) => Comparable(a) == Comparable(b);
+
+    /// <summary>„Punch & Judy“ = „Punch And Judy“, „13× Forever“ = „13 x Forever“, Artikel zählen nicht.</summary>
+    private static string Comparable(string value)
+    {
+        var text = DroppedG().Replace(value, "$1ing").Replace("&", " and ").Replace('×', 'x');
+        return Spaces().Replace(Articles().Replace(TrackKey.Normalize(text), " "), " ").Trim();
+    }
+
+    [GeneratedRegex(@"\b(the|a|an)\b")]
+    private static partial Regex Articles();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Spaces();
+
+    [GeneratedRegex(@"^\d{1,3}\s*[-._)]\s*|^\d{1,3}\s+(?=\p{Lu})")]
+    private static partial Regex LeadingTrackNumber();
+
+    [GeneratedRegex(@"\s+-\s+")]
+    private static partial Regex Separator();
+
+    [GeneratedRegex(@"\s*[(\[][^)\]]*[)\]]")]
+    private static partial Regex Brackets();
+
+    /// <summary>Levenshtein-Distanz, abgebrochen sobald sie <paramref name="limit"/> überschreitet.</summary>
+    internal static int EditDistance(string a, string b, int limit)
+    {
+        if (Math.Abs(a.Length - b.Length) > limit)
+            return limit + 1;
+        var previous = Enumerable.Range(0, b.Length + 1).ToArray();
+        var current = new int[b.Length + 1];
+        for (var i = 1; i <= a.Length; i++)
+        {
+            current[0] = i;
+            var rowMin = i;
+            for (var j = 1; j <= b.Length; j++)
+            {
+                current[j] = Math.Min(Math.Min(current[j - 1], previous[j]) + 1, previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+                rowMin = Math.Min(rowMin, current[j]);
+            }
+
+            if (rowMin > limit)
+                return limit + 1;
+            (previous, current) = (current, previous);
+        }
+
+        return previous[b.Length];
+    }
+
+    /// <summary>„Titel 12“, „Track 03“, „07“, „Vts 03 1“ (DVD-Rip).</summary>
+    [GeneratedRegex(@"^((track|titel|title|piste|pista|spur|audio ?track|kapitel|chapter|unbekannt|unknown)?[\s_-]*\d{1,3}|vts[\s_-]*\d{1,2}([\s_-]+\d{1,2})?)$", RegexOptions.IgnoreCase)]
+    private static partial Regex PlaceholderTitle();
 
     /// <summary>„Lookin'“ → „Looking“.</summary>
     [GeneratedRegex(@"(\w)in['’]", RegexOptions.IgnoreCase)]
