@@ -20,6 +20,8 @@
     <string>Production</string>
     <key>Tonregal__MusicRoot</key>
     <string>@@MUSIC_ROOT@@</string>
+    <key>Tonregal__Navidrome__Url</key>
+    <string>http://@@TAILSCALE_IP@@:4533</string>
     <key>PATH</key>
     <string>@@BREW_PREFIX@@/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>

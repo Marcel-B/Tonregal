@@ -328,6 +328,9 @@ export const api = {
   fetchCover: (albumId: number) => request<void>('POST', `/library/albums/${albumId}/cover`),
   alignRelease: (albumId: number) => request<ReleaseAlignResult>('POST', `/library/albums/${albumId}/align-release`),
   audioUrl: (fileId: number) => `/api/library/files/${fileId}/audio`,
+  streamUrl: (fileId: number) => `/api/player/files/${fileId}/stream`,
+  /** submission=false meldet „läuft gerade“, true zählt das Stück in Navidrome als gehört. */
+  scrobble: (fileId: number, submission: boolean) => request<void>('POST', `/player/files/${fileId}/scrobble?submission=${submission}`),
   backup: () => get<BackupResponse>('/backup'),
   runBackup: () => request<BackupStatus>('POST', '/backup/run'),
   cancelBackup: () => request<BackupStatus>('POST', '/backup/cancel'),

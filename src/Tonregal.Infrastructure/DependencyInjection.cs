@@ -12,6 +12,7 @@ using Tonregal.Infrastructure.Fingerprinting;
 using Tonregal.Infrastructure.Library;
 using Tonregal.Infrastructure.Import;
 using Tonregal.Infrastructure.Metadata;
+using Tonregal.Infrastructure.Navidrome;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Infrastructure.Tagging;
 
@@ -47,6 +48,8 @@ public static class DependencyInjection
         services.Configure<BackupOptions>(configuration.GetSection(BackupOptions.SectionName));
         services.AddSingleton<LibraryWriteLock>();
         services.AddScoped<IBackupRunner, RcloneBackup>();
+        services.Configure<NavidromeOptions>(configuration.GetSection(NavidromeOptions.SectionName));
+        services.AddHttpClient<INavidromeClient, NavidromeClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         return services;
     }
 

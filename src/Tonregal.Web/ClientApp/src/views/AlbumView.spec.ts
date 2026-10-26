@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 import PrimeVue from 'primevue/config'
+import { createPinia, setActivePinia } from 'pinia'
+import { usePlayerStore } from '@/stores/player'
 import AlbumView from './AlbumView.vue'
 import type { AlbumDetail } from '@/api'
 
@@ -23,6 +25,11 @@ const album: AlbumDetail = {
 }
 
 describe('AlbumView', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+  })
+
   it('zeigt Tracks, Gäste, Dauer und Formate', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(album))))
 
@@ -67,5 +74,22 @@ describe('AlbumView', () => {
     expect(fetch.mock.calls.map((c) => [c[0], c[1]?.method])).toContainEqual(['/api/library/albums/7/align-release', 'POST'])
     expect(wrapper.find('[data-testid="align-release"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="align-message"]').text()).toBe('3 Tracks angepasst, 1 stehen nicht auf diesem Release.')
+  })
+
+  it('spielt das Album ab einem Track und reiht einen als Nächstes ein', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(album))))
+    const wrapper = mount(AlbumView, { props: { id: 7 }, global: { plugins: [PrimeVue], stubs: { RouterLink: RouterLinkStub } } })
+    await flushPromises()
+    const player = usePlayerStore()
+
+    await wrapper.findAll('button[data-testid="play-track"]')[1]!.trigger('click')
+    expect(player.queue.map((i) => i.fileId)).toEqual([1, 2])
+    expect(player.playing).toBe(true)
+    expect(player.current?.title).toBe('Zweiter Song')
+    expect(wrapper.findAll('[data-testid="track-current"]')).toHaveLength(1)
+
+    await wrapper.findAll('button[data-testid="play-next"]')[0]!.trigger('click')
+    expect(player.queue.map((i) => i.title)).toEqual(['Erster Song', 'Zweiter Song', 'Erster Song'])
+    expect(player.queue[1]!.artist).toBe('Testband, Gast')
   })
 })

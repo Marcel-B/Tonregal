@@ -1,0 +1,127 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { defineStore } from 'pinia'
+import { computed, ref, watch } from 'vue'
+import type { AlbumDetail } from '@/api'
+
+export interface QueueItem {
+  fileId: number
+  trackId: number
+  title: string
+  artist: string
+  album: string
+  albumId: number
+  durationMs: number
+}
+
+const storageKey = 'tonregal.player'
+
+/** Tracks eines Albums in Abspielreihenfolge; Tracks ohne Datei fallen weg, je Track die bevorzugte Datei (FLAC zuerst). */
+export function albumQueue(album: AlbumDetail): QueueItem[] {
+  return album.tracks
+    .filter((t) => t.files.length > 0)
+    .map((t) => ({
+      fileId: t.files[0]!.id,
+      trackId: t.id,
+      title: t.title,
+      artist: t.artists.join(', ') || album.albumArtist.name,
+      album: album.title,
+      albumId: album.id,
+      durationMs: t.durationMs,
+    }))
+}
+
+/**
+ * Queue und Abspielwunsch. Das &lt;audio&gt;-Element lebt in der PlayerBar und folgt diesem Store;
+ * startToken steigt bei jedem „von vorn starten“, damit auch dasselbe Stück neu beginnt.
+ */
+export const usePlayerStore = defineStore('player', () => {
+  const queue = ref<QueueItem[]>([])
+  const index = ref(-1)
+  const playing = ref(false)
+  const startToken = ref(0)
+  const current = computed(() => queue.value[index.value] ?? null)
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) ?? 'null')
+    if (Array.isArray(saved?.queue)) {
+      queue.value = saved.queue
+      index.value = Math.min(saved.index ?? 0, saved.queue.length - 1)
+    }
+  } catch {
+    // ohne Speicher eben mit leerer Queue
+  }
+  watch([queue, index], () => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ queue: queue.value, index: index.value }))
+    } catch {
+      // privates Fenster o. ä.
+    }
+  }, { deep: true })
+
+  // Reihenfolge zählt: erst die neue Quelle laden, dann abspielen – so ruft die PlayerBar play() genau einmal.
+  function start(at: number) {
+    index.value = at
+    startToken.value++
+    playing.value = at >= 0
+  }
+
+  function play(items: QueueItem[], at = 0) {
+    queue.value = items
+    start(items.length ? Math.max(0, Math.min(at, items.length - 1)) : -1)
+  }
+
+  function playAlbum(album: AlbumDetail, trackId?: number) {
+    const items = albumQueue(album)
+    play(items, Math.max(0, items.findIndex((i) => i.trackId === trackId)))
+  }
+
+  /** Hinten anhängen; bei leerer Queue gleich abspielen. */
+  function enqueue(items: QueueItem[]) {
+    const wasEmpty = current.value === null
+    queue.value.push(...items)
+    if (wasEmpty && items.length) start(queue.value.length - items.length)
+  }
+
+  /** Direkt nach dem laufenden Stück einreihen. */
+  function playNext(items: QueueItem[]) {
+    if (current.value === null) return enqueue(items)
+    queue.value.splice(index.value + 1, 0, ...items)
+  }
+
+  function next() {
+    if (index.value < queue.value.length - 1) start(index.value + 1)
+    else playing.value = false
+  }
+
+  function previous() {
+    start(Math.max(0, index.value - 1))
+  }
+
+  function jump(at: number) {
+    start(at)
+  }
+
+  function remove(at: number) {
+    queue.value.splice(at, 1)
+    if (at < index.value) index.value--
+    else if (at === index.value) {
+      if (index.value >= queue.value.length) {
+        index.value = queue.value.length - 1
+        playing.value = false
+      }
+      startToken.value++
+    }
+  }
+
+  function clear() {
+    queue.value = []
+    index.value = -1
+    playing.value = false
+  }
+
+  function toggle() {
+    if (current.value) playing.value = !playing.value
+  }
+
+  return { queue, index, playing, startToken, current, play, playAlbum, enqueue, playNext, next, previous, jump, remove, clear, toggle }
+})
