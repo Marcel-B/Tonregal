@@ -196,7 +196,7 @@ function move(step: number) {
   const index = list.findIndex((j) => j.id === focusedId.value)
   const next = index < 0 ? 0 : Math.min(list.length - 1, Math.max(0, index + step))
   focusedId.value = list[next]!.id
-  requestAnimationFrame(() => document.querySelector('.focused-row')?.scrollIntoView({ block: 'nearest' }))
+  requestAnimationFrame(() => document.querySelector('.focused-row')?.scrollIntoView?.({ block: 'nearest' }))
 }
 // Nach einer Aktion verschwindet die Zeile meist; dann rückt die nächste nach.
 watch(visibleJobs, (list, before) => {
