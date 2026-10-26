@@ -1,0 +1,3 @@
+# Analyse-Script (analyze.py); das Deploy-Script legt damit ein venv auf der T7 an.
+librosa>=0.10,<0.12
+soundfile>=0.12

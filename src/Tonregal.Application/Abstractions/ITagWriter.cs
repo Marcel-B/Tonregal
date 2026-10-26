@@ -17,4 +17,8 @@ public interface ITagWriter
     /// </summary>
     /// <exception cref="InvalidDataException">Datei ist kein schreibbares Audioformat.</exception>
     void WriteBasic(string path, string title, IReadOnlyList<string> artists, string albumArtist, string album);
+
+    /// <summary>Setzt BPM (gerundet, TBPM/BPM) und Tonart (TKEY/INITIALKEY); <c>null</c> lässt den Wert, wie er ist.</summary>
+    /// <exception cref="InvalidDataException">Datei ist kein schreibbares Audioformat.</exception>
+    void WriteAnalysis(string path, double? bpm, string? key);
 }

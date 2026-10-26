@@ -75,6 +75,29 @@ public sealed class TagLibTagWriter : ITagWriter
         file.Save();
     }
 
+    public void WriteAnalysis(string path, double? bpm, string? key)
+    {
+        using var file = Open(path);
+        if (file is TagLib.Mpeg.AudioFile or TagLib.Riff.File)
+            file.GetTag(TagTypes.Id3v2, true);
+
+        if (bpm is { } value)
+            file.Tag.BeatsPerMinute = (uint)Math.Round(value);
+        if (key is not null)
+            file.Tag.InitialKey = key;
+
+        // Ogg/Opus: TagLib setzt Tonart über die Sammel-Tags nicht; die Felder heißen wie bei Picard.
+        if (file.GetTag(TagTypes.Xiph) is TagLib.Ogg.XiphComment xiph)
+        {
+            if (bpm is { } xiphBpm)
+                xiph.SetField("BPM", ((uint)Math.Round(xiphBpm)).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (key is not null)
+                xiph.SetField("INITIALKEY", key);
+        }
+
+        file.Save();
+    }
+
     private static File Open(string path)
     {
         try

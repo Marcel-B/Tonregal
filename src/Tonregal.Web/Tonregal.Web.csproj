@@ -23,6 +23,10 @@
     <None Include="$(ClientAppRoot)**" Exclude="$(ClientAppRoot)node_modules/**" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="analysis/**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Beim Publish die Vue-SPA bauen; Vite schreibt nach wwwroot. Das muss vor dem Build passieren,
        damit die Static-Web-Assets (inkl. Kompression) die neuen, gehashten Dateien sehen und nicht
        die vom letzten Build. -->

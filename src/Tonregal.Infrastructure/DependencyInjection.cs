@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
+using Tonregal.Infrastructure.Analysis;
 using Tonregal.Infrastructure.Duplicates;
 using Tonregal.Infrastructure.Fingerprinting;
 using Tonregal.Infrastructure.Library;
@@ -38,6 +39,10 @@ public static class DependencyInjection
         services.AddScoped<IDuplicateService, DuplicateService>();
         services.AddScoped<IReleaseAligner, ReleaseAligner>();
         services.AddMetadataServices(configuration);
+        services.Configure<AnalysisOptions>(configuration.GetSection(AnalysisOptions.SectionName));
+        services.AddSingleton<IBpmKeyAnalyzer, LibrosaAnalyzer>();
+        services.AddSingleton<IReplayGainTagger, RsgainTagger>();
+        services.AddScoped<ILibraryAnalyzer, LibraryAnalyzer>();
         return services;
     }
 
