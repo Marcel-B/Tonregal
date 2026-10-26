@@ -240,7 +240,6 @@ async function select(candidate: RecordingCandidate) {
 <template>
   <div class="flex flex-wrap items-center gap-3 mb-6">
     <h1 class="text-2xl font-semibold mr-auto">{{ isLegacy ? 'Altbestand' : 'Inbox' }}</h1>
-    <span v-if="progress" class="text-sm text-surface-500" data-testid="inbox-progress">{{ progress }}</span>
     <Button
       v-if="matched().length"
       :label="`Alle erkannten übernehmen (${matched().length})`"
@@ -283,6 +282,8 @@ async function select(candidate: RecordingCandidate) {
       <InboxUpload @uploaded="scan" />
     </template>
   </div>
+  <!-- Eigene Zeile mit fester Höhe, damit lange Pfade die Knöpfe nicht verschieben. -->
+  <div class="-mt-4 mb-4 h-5 truncate text-sm text-surface-500" :title="progress" data-testid="inbox-progress">{{ progress }}</div>
   <div v-if="isLegacy && legacy" class="mb-6 text-sm text-surface-500" data-testid="legacy-summary">
     <p v-if="!legacy.exists">
       Den Ordner <code>{{ legacy.path }}</code> gibt es nicht. Leg die MP3-Kopien dort ab oder trag den Pfad als
