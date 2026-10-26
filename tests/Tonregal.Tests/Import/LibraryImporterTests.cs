@@ -47,7 +47,7 @@ public sealed class LibraryImporterTests : IDisposable
     }
 
     private LibraryImporter Importer() => new(
-        _db, _reader, new TagLibTagWriter(), new FakeLookup(release => _otherReleases.GetValueOrDefault(release) ?? _track), _covers,
+        _db, _reader, new TagLibTagWriter(), new FakeLookup(release => _otherReleases.GetValueOrDefault(release) ?? _track), _covers, new LibraryWriteLock(),
         Microsoft.Extensions.Options.Options.Create(Options), TimeProvider.System, NullLogger<LibraryImporter>.Instance);
 
     private async Task<ImportJob> MatchedJobAsync(string testFile, string relativePath)

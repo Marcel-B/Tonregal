@@ -141,10 +141,12 @@ public static class InboxApi
 
         // Kein Treffer passt: mit Titel und Interpret aus Tags oder Dateiname ins Sammelalbum.
         inbox.MapPost("/{id:int}/import-unmatched", async Task<IResult> (
-            int id, TonregalDbContext db, ILibraryImporter importer, LibraryScanService scans, CancellationToken ct) =>
+            int id, TonregalDbContext db, ILibraryImporter importer, LibraryScanService scans, LibraryWriteLock writeLock, CancellationToken ct) =>
         {
             if (await db.ImportJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct) is not { } existing)
                 return TypedResults.NotFound();
+            if (writeLock.Holder == "Backup")
+                return TypedResults.Problem("Das Backup läuft gerade, bitte danach noch einmal", statusCode: StatusCodes.Status409Conflict);
             if (existing.State != ImportState.NeedsReview)
                 return TypedResults.Problem("Nur zu prüfende Dateien lassen sich ohne Treffer übernehmen", statusCode: StatusCodes.Status409Conflict);
             var job = await importer.ImportUnmatchedAsync(id, ct);

@@ -16,7 +16,7 @@ staging="$(mktemp -d)"
 trap 'rm -rf "$staging"' EXIT
 
 echo "==> Homebrew-Pakete"
-for package in chromaprint rsgain uv; do
+for package in chromaprint rsgain uv rclone; do
   brew list "$package" >/dev/null 2>&1 || brew install "$package"
 done
 

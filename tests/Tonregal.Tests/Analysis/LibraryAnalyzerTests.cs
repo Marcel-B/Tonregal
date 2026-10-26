@@ -39,7 +39,7 @@ public sealed class LibraryAnalyzerTests : IDisposable
     }
 
     private LibraryAnalyzer Analyzer() => new(
-        _db, _bpmKey, _replayGain, _reader, new TagLibTagWriter(), Options, TimeProvider.System, NullLogger<LibraryAnalyzer>.Instance);
+        _db, _bpmKey, _replayGain, _reader, new TagLibTagWriter(), new LibraryWriteLock(), Options, TimeProvider.System, NullLogger<LibraryAnalyzer>.Instance);
 
     private Task<ScanResult> ScanAsync() =>
         new LibraryScanner(_db, _reader, Options, TimeProvider.System, NullLogger<LibraryScanner>.Instance).ScanAsync(null, Ct);

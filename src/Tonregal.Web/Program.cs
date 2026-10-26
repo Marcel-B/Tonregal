@@ -8,6 +8,7 @@ using Tonregal.Infrastructure;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Analysis;
 using Tonregal.Web.Api;
+using Tonregal.Web.Backup;
 using Tonregal.Web.Hubs;
 using Tonregal.Web.Inbox;
 using Tonregal.Web.Library;
@@ -34,6 +35,8 @@ builder.Services.AddSingleton<InboxService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<InboxService>());
 builder.Services.AddSingleton<AnalysisService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AnalysisService>());
+builder.Services.AddSingleton<BackupService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupService>());
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
@@ -63,7 +66,7 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi();
+app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi();
 app.MapHub<StatusHub>("/hub");
 app.MapFallbackToFile("index.html");
 
