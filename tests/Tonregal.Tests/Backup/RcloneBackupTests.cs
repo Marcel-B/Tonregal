@@ -35,7 +35,7 @@ public sealed class RcloneBackupTests : IDisposable
         _library.Dispose();
     }
 
-    private string FakeRclone(string remotes = "nextcloud:", int syncExit = 0, string syncLog = """{"level":"info","msg":"Transferred","stats":{"bytes":1234,"transfers":3,"deletes":1}}""")
+    private string FakeRclone(string remotes = "nextcloud:", int syncExit = 0, int syncSeconds = 0, string syncLog = """{"level":"info","msg":"Transferred","stats":{"bytes":1234,"transfers":3,"deletes":1}}""")
     {
         var script = Path.Combine(_library.MusicRoot, "fake-rclone.sh");
         File.WriteAllText(script, $$"""
@@ -44,7 +44,7 @@ public sealed class RcloneBackupTests : IDisposable
             map() { echo "${1/nextcloud:Musik/{{Remote}}}"; }
             case "$1" in
               listremotes) echo '{{remotes}}' ;;
-              sync) echo '{{syncLog}}' >&2; exit {{syncExit}} ;;
+              sync) echo '{{syncLog}}' >&2; sleep {{syncSeconds}}; exit {{syncExit}} ;;
               copy) mkdir -p "$(map "$3")" && cp -R "$2"/. "$(map "$3")" ;;
               lsf) ls -1 "$(map "$3")" | sed 's|$|/|' ;;
               purge) rm -rf "$(map "$2")" ;;
@@ -127,5 +127,34 @@ public sealed class RcloneBackupTests : IDisposable
 
         Assert.Equal((2, 5, 2048L), (summary.Transfers, summary.Deletes, summary.Bytes));
         Assert.Equal(["b.flac: Failed to copy: 507 Insufficient Storage"], summary.Errors);
+    }
+
+    [Fact]
+    public async Task Abbrechen_beendet_rclone_und_speichert_den_Lauf()
+    {
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var progress = new List<string>();
+        cancel.CancelAfter(TimeSpan.FromSeconds(2));
+
+        var run = await Backup(FakeRclone(syncSeconds: 30)).RunAsync(new SyncProgress(progress.Add), cancel.Token);
+
+        Assert.Equal(BackupStatus.Failed, run.Status);
+        Assert.Equal("Abgebrochen", run.Log);
+        Assert.Contains("Lädt hoch: 3 Dateien, 0,0 GB", progress);
+        Assert.Equal(BackupStatus.Failed, (await _db.BackupRuns.AsNoTracking().SingleAsync(Ct)).Status);
+    }
+
+    private sealed class SyncProgress(Action<string> report) : IProgress<string>
+    {
+        public void Report(string value) => report(value);
+    }
+
+    [Fact]
+    public void Fortschritt_aus_der_Statistik()
+    {
+        Assert.Equal("Lädt hoch: 120 von 4.800 Dateien, 1,2 von 38,5 GB", RcloneBackup.ProgressText(
+            """{"level":"notice","msg":"stats","stats":{"bytes":1234000000,"totalBytes":38500000000,"transfers":120,"totalTransfers":4800}}"""));
+        Assert.Null(RcloneBackup.ProgressText("""{"level":"info","msg":"a.mp3: Copied (new)"}"""));
+        Assert.Null(RcloneBackup.ProgressText("kein JSON"));
     }
 }

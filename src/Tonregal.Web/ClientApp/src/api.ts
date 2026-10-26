@@ -330,6 +330,7 @@ export const api = {
   audioUrl: (fileId: number) => `/api/library/files/${fileId}/audio`,
   backup: () => get<BackupResponse>('/backup'),
   runBackup: () => request<BackupStatus>('POST', '/backup/run'),
+  cancelBackup: () => request<BackupStatus>('POST', '/backup/cancel'),
   analysis: () => get<AnalysisResponse>('/analysis'),
   startAnalysis: () => request<AnalysisStatus>('POST', '/analysis/start'),
   stopAnalysis: () => request<AnalysisStatus>('POST', '/analysis/stop'),

@@ -16,6 +16,7 @@ public static class BackupApi
             new BackupResponse(service.Status, await BackupService.RecentAsync(db, 14, ct)));
         // Auch von tonregal-backup-now in deploy/shell/tonregal.zsh benutzt.
         backup.MapPost("/run", (BackupService service) => TypedResults.Accepted("/api/backup", service.RequestRun()));
+        backup.MapPost("/cancel", (BackupService service) => service.Cancel());
 
         return api;
     }

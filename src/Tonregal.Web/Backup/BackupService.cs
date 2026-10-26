@@ -38,6 +38,7 @@ public sealed class BackupService(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
 
     private volatile BackupStatusDto _status = new(false, null, null, null, 0, null);
+    private CancellationTokenSource? _current;
 
     public BackupStatusDto Status => _status with { NextRunAt = NextRun(time.GetLocalNow()) };
 
@@ -48,8 +49,23 @@ public sealed class BackupService(
         return _status;
     }
 
+    /// <summary>Bricht den laufenden Lauf ab; rclone wird beendet, der Lauf als fehlgeschlagen gespeichert.</summary>
+    public BackupStatusDto Cancel()
+    {
+        try
+        {
+            _current?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        return _status;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await MarkInterruptedRunsAsync(stoppingToken);
         await PublishAsync(await LoadStatusAsync(running: false, step: null, stoppingToken), stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -77,11 +93,17 @@ public sealed class BackupService(
     private async Task RunAsync(CancellationToken ct)
     {
         await PublishAsync(_status with { Running = true, Step = "Startet" }, ct);
+        using var current = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _current = current;
         try
         {
             await using var scope = scopes.CreateAsyncScope();
-            var progress = new Progress<string>(step => _ = PublishAsync(_status with { Step = step }, ct));
-            var run = await scope.ServiceProvider.GetRequiredService<IBackupRunner>().RunAsync(progress, ct);
+            var progress = new Progress<string>(step =>
+            {
+                if (_status.Running)
+                    _ = PublishAsync(_status with { Step = step }, ct);
+            });
+            var run = await scope.ServiceProvider.GetRequiredService<IBackupRunner>().RunAsync(progress, current.Token);
             logger.LogInformation("Backup {Status}: {Files} Datei(en), {Bytes} Bytes", run.Status, run.FilesSynced, run.BytesSynced);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -92,8 +114,27 @@ public sealed class BackupService(
         {
             logger.LogError(e, "Backup-Lauf abgebrochen");
         }
+        finally
+        {
+            _current = null;
+        }
 
         await PublishAsync(await LoadStatusAsync(running: false, step: null, ct), ct);
+    }
+
+    /// <summary>Läufe, die beim letzten Beenden der App noch liefen, gelten als fehlgeschlagen.</summary>
+    private async Task MarkInterruptedRunsAsync(CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TonregalDbContext>();
+        foreach (var run in await db.BackupRuns.Where(r => r.Status == BackupStatus.Running).ToListAsync(ct))
+        {
+            run.Status = BackupStatus.Failed;
+            run.FinishedAt ??= time.GetUtcNow();
+            run.Log = string.IsNullOrEmpty(run.Log) ? "Abgebrochen (App neu gestartet)" : run.Log;
+        }
+
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task<BackupStatusDto> LoadStatusAsync(bool running, string? step, CancellationToken ct)

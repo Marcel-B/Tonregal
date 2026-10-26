@@ -46,7 +46,13 @@ public sealed class RcloneBackup(
                 await SyncAsync(run, log, progress, ct);
             run.Status = BackupStatus.Succeeded;
         }
-        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            logger.LogInformation("Backup abgebrochen");
+            log.AppendLine("Abgebrochen");
+            run.Status = BackupStatus.Failed;
+        }
+        catch (Exception e)
         {
             logger.LogWarning("Backup fehlgeschlagen: {Message}", e.Message);
             log.AppendLine(e.Message);
@@ -74,11 +80,15 @@ public sealed class RcloneBackup(
             // Papierkorb, macOS-Ressourcendateien und halb geschriebene .tonregal-*-Kopien bleiben lokal.
             "--exclude", ".*", "--exclude", ".*/**",
             "--max-delete", o.MaxDelete.ToString(CultureInfo.InvariantCulture),
-            "--use-json-log", "--log-level", "INFO", "--stats", "1m", "--stats-log-level", "NOTICE",
+            "--use-json-log", "--log-level", "INFO", "--stats", "30s", "--stats-log-level", "NOTICE",
         ];
         if (!string.IsNullOrWhiteSpace(o.BandwidthLimit))
             sync.AddRange(["--bwlimit", o.BandwidthLimit]);
-        var result = await RcloneAsync(sync, ct);
+        var result = await RcloneAsync(sync, ct, line =>
+        {
+            if (progress is not null && ProgressText(line) is { } text)
+                progress.Report(text);
+        });
         var summary = ParseLog(result.Stderr);
         (run.FilesSynced, run.BytesSynced) = (summary.Transfers, summary.Bytes);
         log.AppendLine($"Library: {summary.Transfers} Datei(en) übertragen, {summary.Deletes} gelöscht, {summary.Bytes} Bytes");
@@ -155,8 +165,38 @@ public sealed class RcloneBackup(
         await command.ExecuteNonQueryAsync(ct);
     }
 
-    private Task<ProcessResult> RcloneAsync(IEnumerable<string> arguments, CancellationToken ct) =>
-        ExternalProcess.RunAsync(backup.Value.RclonePath, arguments, TimeSpan.FromHours(backup.Value.TimeoutHours), InstallHint, ct);
+    private Task<ProcessResult> RcloneAsync(IEnumerable<string> arguments, CancellationToken ct, Action<string>? onLogLine = null) =>
+        ExternalProcess.RunAsync(backup.Value.RclonePath, arguments, TimeSpan.FromHours(backup.Value.TimeoutHours), InstallHint, ct, onLogLine);
+
+    /// <summary>Aus einer Statistik-Zeile von rclone ein Fortschrittstext, z. B. „Lädt hoch: 120 von 4.800 Dateien, 1,2 von 38,5 GB“.</summary>
+    internal static string? ProgressText(string jsonLine)
+    {
+        try
+        {
+            var entry = JsonDocument.Parse(jsonLine).RootElement;
+            if (!entry.TryGetProperty("stats", out var stats) || stats.ValueKind != JsonValueKind.Object)
+                return null;
+            var de = CultureInfo.GetCultureInfo("de-DE");
+            var transfers = Int(stats, "transfers");
+            var totalTransfers = Int(stats, "totalTransfers");
+            var bytes = Long(stats, "bytes");
+            var totalBytes = Long(stats, "totalBytes");
+            var files = totalTransfers > transfers
+                ? $"{transfers.ToString("N0", de)} von {totalTransfers.ToString("N0", de)} Dateien"
+                : $"{transfers.ToString("N0", de)} Dateien";
+            var size = totalBytes > bytes ? $"{Gigabytes(bytes, de)} von {Gigabytes(totalBytes, de)} GB" : $"{Gigabytes(bytes, de)} GB";
+            return $"Lädt hoch: {files}, {size}";
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string Gigabytes(long bytes, CultureInfo culture) => (bytes / 1e9).ToString("0.0", culture);
+
+    private static long Long(JsonElement stats, string name) =>
+        stats.TryGetProperty(name, out var value) && value.TryGetInt64(out var l) ? l : 0;
 
     internal sealed record LogSummary(int Transfers, int Deletes, long Bytes, List<string> Errors);
 

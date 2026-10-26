@@ -55,5 +55,8 @@ describe('DashboardView', () => {
     await wrapper.get('[data-testid="run-backup"]').trigger('click')
     await flushPromises()
     expect(fetch).toHaveBeenCalledWith('/api/backup/run', expect.objectContaining({ method: 'POST' }))
+    await wrapper.get('[data-testid="cancel-backup"]').trigger('click')
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledWith('/api/backup/cancel', expect.objectContaining({ method: 'POST' }))
   })
 })

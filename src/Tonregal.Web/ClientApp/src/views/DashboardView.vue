@@ -65,13 +65,16 @@ const states = {
   Failed: { label: 'Fehler', severity: 'danger' },
 } as const
 
-async function runBackup() {
+async function call(action: () => Promise<unknown>) {
   try {
-    store.backup = await api.runBackup()
+    await action()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
 }
+
+const runBackup = () => call(async () => (store.backup = { ...(await api.runBackup()), running: true }))
+const cancelBackup = () => call(() => api.cancelBackup())
 </script>
 
 <template>
@@ -93,14 +96,15 @@ async function runBackup() {
     <div class="flex flex-wrap items-center gap-3 mb-3">
       <h2 class="text-xl font-semibold mr-auto">Backup nach Nextcloud</h2>
       <Button
-        label="Jetzt sichern"
-        icon="pi pi-cloud-upload"
+        v-if="backup?.running"
+        label="Abbrechen"
+        icon="pi pi-stop"
         size="small"
         severity="secondary"
-        :loading="backup?.running"
-        data-testid="run-backup"
-        @click="runBackup"
+        data-testid="cancel-backup"
+        @click="cancelBackup"
       />
+      <Button v-else label="Jetzt sichern" icon="pi pi-cloud-upload" size="small" severity="secondary" data-testid="run-backup" @click="runBackup" />
     </div>
     <Message v-if="failing" severity="error" class="mb-3" data-testid="backup-failing">
       Die letzten {{ backup?.consecutiveFailures }} Backups sind fehlgeschlagen. {{ backup?.lastRun?.log }}
