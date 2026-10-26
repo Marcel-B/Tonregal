@@ -142,7 +142,7 @@ public sealed class InboxImporterTests : IDisposable
             "niedrig" => [Candidate("Erster Song", 0.72)],
             "leer" => [],
             "dauer" => [Candidate("Erster Song", 0.95, durationMs: 240_000)],
-            "mbid" => [Candidate("Zweiter Song", 0.95)],
+            "mbid" => [Candidate("Ganz anderer Song", 0.95)],
             _ => [Candidate("Ganz anderer Song", 0.95)],
         };
 
@@ -215,6 +215,21 @@ public sealed class InboxImporterTests : IDisposable
 
         Assert.Equal(ImportState.Matched, job.State);
         Assert.Equal(ReleaseA, job.SelectedReleaseId);
+    }
+
+    [Fact]
+    public async Task Fremde_Recording_ID_mit_passendem_Titel_gilt_als_Treffer()
+    {
+        // song2.flac trägt die Recording-ID 6f0e1a5c-…, AcoustID kennt die Aufnahme unter einer anderen.
+        Drop("song2.flac", "02.flac");
+        var fingerprint = Guid.NewGuid();
+        _lookup.Results["02.flac"] = [Candidate("Zweiter Song", 0.95, ReleaseA, fingerprint)];
+
+        var job = Assert.Single(await ProcessAllAsync());
+
+        Assert.Equal(ImportState.Matched, job.State);
+        Assert.Null(job.ReviewReason);
+        Assert.Equal(fingerprint, job.SelectedRecordingId);
     }
 
     [Fact]

@@ -439,7 +439,10 @@ public sealed partial class InboxImporter(
         // Etwas niedrigerer Score reicht, wenn Titel und Interpret aus den Tags passen.
         if (bestScore < autoMatchScore && !(bestScore >= TagConfirmedScore && MatchesTags(selected, tags)))
             return $"Score {bestScore:P0} unter {autoMatchScore:P0}";
-        if (tags.MusicBrainzRecordingId is { } recording && good.All(c => c.RecordingId != recording))
+        // Eine fremde Recording-ID in den Tags (z. B. von Picard, später zusammengeführt) ist nur
+        // ein Konflikt, wenn auch Titel und Interpret nicht passen; sonst gilt der Fingerprint.
+        if (tags.MusicBrainzRecordingId is { } recording && good.All(c => c.RecordingId != recording)
+            && !MatchesTags(selected, tags))
             return "MusicBrainz-ID in den Tags passt nicht zum Fingerprint";
         if (tags.Title is { } title)
             return MatchesTags(selected, tags) ? null : $"Tags passen zu keinem Treffer: „{title}“";
