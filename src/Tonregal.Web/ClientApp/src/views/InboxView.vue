@@ -111,6 +111,12 @@ const importJobs = (list: ImportJob[]) =>
   run(async () => {
     status.inbox = await api.importJobs(list.map((j) => j.id))
   })
+// Im Review: den Vorschlag bestätigen und gleich übernehmen.
+const accept = (job: ImportJob) =>
+  run(async () => {
+    await api.selectCandidate(job.id, job.selected!.recordingId, job.selected!.releaseId!)
+    status.inbox = await api.importJobs([job.id])
+  })
 const reject = (job: ImportJob) => run(() => api.rejectImport(job.id))
 
 async function scan() {
@@ -271,6 +277,18 @@ async function select(candidate: RecordingCandidate) {
               @click="importJobs([data])"
             />
             <Button
+              v-if="data.state === 'NeedsReview' && data.selected?.releaseId"
+              icon="pi pi-check"
+              text
+              rounded
+              size="small"
+              severity="warn"
+              aria-label="Vorschlag übernehmen"
+              title="Vorschlag übernehmen"
+              data-testid="accept-job"
+              @click="accept(data)"
+            />
+            <Button
               v-if="data.candidateCount"
               icon="pi pi-list"
               text
@@ -328,6 +346,7 @@ async function select(candidate: RecordingCandidate) {
       :selected-recording-id="candidates.selectedRecordingId"
       :selected-release-id="candidates.selectedReleaseId"
       selectable
+      :confirm-selected="candidatesFor?.state === 'NeedsReview'"
       @select="select"
     />
   </Dialog>

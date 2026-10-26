@@ -89,6 +89,28 @@ describe('InboxView', () => {
     expect(JSON.parse(call![1]!.body as string)).toEqual({ jobIds: [1] })
   })
 
+  it('übernimmt einen Vorschlag aus dem Review', async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      url === '/api/inbox/2/select'
+        ? new Response(JSON.stringify(response.jobs[1]))
+        : url === '/api/inbox/import' && init?.method === 'POST'
+          ? new Response(JSON.stringify({ ...response.status, running: true, importsPending: 1 }), { status: 202 })
+          : new Response(JSON.stringify(response)),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.find('[data-testid="accept-job"]').trigger('click')
+    await flushPromises()
+
+    const urls = fetch.mock.calls.filter(([, init]) => init?.method === 'POST').map(([url, init]) => [url, JSON.parse(init!.body as string)])
+    expect(urls).toEqual([
+      ['/api/inbox/2/select', { recordingId: 'r1', releaseId: 'rel1' }],
+      ['/api/inbox/import', { jobIds: [2] }],
+    ])
+  })
+
   it('verwirft einen Job', async () => {
     const fetch = vi.fn(async (url: string) =>
       url.endsWith('/reject') ? new Response(null, { status: 204 }) : new Response(JSON.stringify(response)),

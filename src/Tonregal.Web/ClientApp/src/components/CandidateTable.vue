@@ -13,6 +13,8 @@ const props = defineProps<{
   selectedReleaseId?: string | null
   /** Zeigt pro Zeile „Diesen nehmen“. */
   selectable?: boolean
+  /** Auch der gewählte Kandidat bekommt „Nehmen“, wenn er nur ein Vorschlag ist (Review). */
+  confirmSelected?: boolean
 }>()
 const emit = defineEmits<{ select: [candidate: RecordingCandidate] }>()
 
@@ -61,7 +63,7 @@ const isSelected = (c: RecordingCandidate) =>
     </Column>
     <Column v-if="selectable" class="w-28">
       <template #body="{ data }">
-        <Button v-if="!isSelected(data)" label="Nehmen" size="small" severity="secondary" data-testid="select-candidate" @click="emit('select', data)" />
+        <Button v-if="confirmSelected || !isSelected(data)" label="Nehmen" size="small" severity="secondary" data-testid="select-candidate" @click="emit('select', data)" />
       </template>
     </Column>
   </DataTable>
