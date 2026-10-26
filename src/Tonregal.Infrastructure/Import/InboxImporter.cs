@@ -246,8 +246,12 @@ public sealed partial class InboxImporter(
         bool Fits(RecordingCandidate c) => job.DurationMs <= 0
             || (c.DurationMs is { } length ? Math.Abs(length - job.DurationMs) <= DurationTolerance.TotalMilliseconds : !anyLength);
         var fitting = matching.Where(Fits).ToList();
-        var selected = fitting.FirstOrDefault(c => tags.Album is { } album && c.ReleaseTitle is { } release && SameTitle(album, release))
-            ?? fitting.FirstOrDefault();
+        // Exakter Titel und exaktes Album vor „Sweet Sacrifice (remastered)“ auf der Deluxe Edition.
+        var selected = fitting
+            .OrderByDescending(c => tags.Album is { } album && c.ReleaseTitle is { } release && SameTitle(album, release))
+            .ThenByDescending(c => SameText(tags.Title!, c.Title))
+            .ThenByDescending(c => tags.Album is { } album && c.ReleaseTitle is { } release && SameText(album, release))
+            .FirstOrDefault();
         job.Candidates = JsonSerializer.Serialize(found, Json);
         job.MatchScore = null;
         job.SelectedRecordingId = selected?.RecordingId;
@@ -478,6 +482,9 @@ public sealed partial class InboxImporter(
         var allowed = Math.Min(x.Length, y.Length) switch { < 6 => 0, < 12 => 1, _ => 2 };
         return allowed > 0 && EditDistance(x, y, allowed) <= allowed;
     }
+
+    /// <summary>Gleich nach Normalisierung, ohne Tippfehler-Toleranz und ohne Zusätze wie „(demo)“.</summary>
+    internal static bool SameText(string a, string b) => Comparable(a) == Comparable(b);
 
     /// <summary>„Punch & Judy“ = „Punch And Judy“, „13× Forever“ = „13 x Forever“, Artikel zählen nicht.</summary>
     private static string Comparable(string value)

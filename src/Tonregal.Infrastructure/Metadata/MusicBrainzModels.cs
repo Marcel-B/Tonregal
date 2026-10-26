@@ -103,6 +103,17 @@ public sealed record MbSearchRecording(
 public sealed record MbRecordingSearch(
     [property: JsonPropertyName("recordings")] List<MbSearchRecording>? Recordings);
 
+public sealed record MbReleaseHit(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("score")] int Score,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("status")] string? Status,
+    [property: JsonPropertyName("date")] string? Date,
+    [property: JsonPropertyName("release-group")] MbReleaseGroup? ReleaseGroup);
+
+public sealed record MbReleaseSearch(
+    [property: JsonPropertyName("releases")] List<MbReleaseHit>? Releases);
+
 public static class MbArtistCreditExtensions
 {
     /// <summary>Anzeigename wie auf dem Release, z. B. "Daft Punk feat. Pharrell Williams".</summary>

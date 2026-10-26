@@ -154,7 +154,9 @@ public sealed class MetadataClientTests : IDisposable
     [Fact]
     public async Task Suche_ueber_Tags_bevorzugt_das_Album_aus_den_Tags()
     {
-        var musicBrainz = new StubHandler(_ => StubHandler.File("musicbrainz-search.json"));
+        var musicBrainz = new StubHandler(r => r.RequestUri!.AbsolutePath.EndsWith("/release")
+            ? StubHandler.Json("""{ "releases": [] }""")
+            : StubHandler.File("musicbrainz-search.json"));
         var lookup = new MetadataLookup(AcoustId(new StubHandler(_ => throw new InvalidOperationException())), MusicBrainz(musicBrainz), _options, NullLogger<MetadataLookup>.Instance);
 
         var candidates = await lookup.SearchByTagsAsync("Evanescence", "Bring \"Me\" to Life", "Fallen", 236_000, Ct);
@@ -166,10 +168,36 @@ public sealed class MetadataClientTests : IDisposable
         Assert.Null(candidates[0].AcoustId);
         Assert.Equal(10, candidates[2].TrackNumber);
         // Erst mit Album, dann ohne; doppelte Aufnahmen zählen einmal.
-        var queries = musicBrainz.Requests.Select(r => Uri.UnescapeDataString(r.Request.RequestUri!.Query)).ToList();
+        var queries = musicBrainz.Requests
+            .Where(r => r.Request.RequestUri!.AbsolutePath.EndsWith("/recording"))
+            .Select(r => Uri.UnescapeDataString(r.Request.RequestUri!.Query)).ToList();
         Assert.Equal(2, queries.Count);
         Assert.Contains("recording:\"Bring \\\"Me\\\" to Life\" AND artist:\"Evanescence\" AND release:\"Fallen\"", queries[0]);
         Assert.DoesNotContain("release:", queries[1]);
+    }
+
+    [Fact]
+    public async Task Suche_ueber_Tags_nimmt_zuerst_den_Track_vom_Release_des_Albums()
+    {
+        var musicBrainz = new StubHandler(r => r.RequestUri!.AbsolutePath switch
+        {
+            var path when path.EndsWith("/release") => StubHandler.Json("""
+                { "releases": [
+                    { "id": "aaaaaaaa-0000-0000-0000-000000000009", "score": 50, "title": "Testalbum", "status": "Official" },
+                    { "id": "aaaaaaaa-0000-0000-0000-000000000001", "score": 100, "title": "Testalbum (Deluxe)", "status": "Official", "date": "2024-03-01",
+                      "release-group": { "id": "bbbbbbbb-0000-0000-0000-000000000001", "primary-type": "Album" } } ] }
+                """),
+            var path when path.EndsWith("/recording") => StubHandler.Json("""{ "recordings": [] }"""),
+            _ => StubHandler.File("musicbrainz-release.json"),
+        });
+        var lookup = new MetadataLookup(AcoustId(new StubHandler(_ => throw new InvalidOperationException())), MusicBrainz(musicBrainz), _options, NullLogger<MetadataLookup>.Instance);
+
+        var candidate = Assert.Single(await lookup.SearchByTagsAsync("Testband", "Zweiter Song", "Testalbum", 2000, Ct));
+
+        Assert.Equal((RecordingId, "Zweiter Song (Live)", "Testalbum (Deluxe)"), (candidate.RecordingId, candidate.Title, candidate.ReleaseTitle));
+        Assert.Equal((2, 1, 2040, 1.0), (candidate.Disc, candidate.TrackNumber, candidate.DurationMs, candidate.Score));
+        // Nur das Release mit hohem Such-Score wird geladen.
+        Assert.Single(musicBrainz.Requests, r => r.Request.RequestUri!.AbsolutePath.Contains("/release/"));
     }
 
     [Fact]

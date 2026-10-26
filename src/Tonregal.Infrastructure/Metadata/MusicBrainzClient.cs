@@ -41,6 +41,15 @@ public sealed class MusicBrainzClient(
         return result?.Recordings ?? [];
     }
 
+    /// <summary>Releases nach Titel und Artist (Lucene-Suche); bis zu 25 Treffer, ohne Trackliste.</summary>
+    public async Task<IReadOnlyList<MbReleaseHit>> SearchReleasesAsync(string artist, string album, CancellationToken ct)
+    {
+        var query = $"release:\"{Escape(album)}\" AND artist:\"{Escape(artist)}\"";
+        var key = $"search:release:{artist.ToLowerInvariant()}|{album.ToLowerInvariant()}";
+        var result = await GetAsync<MbReleaseSearch>(key, $"release?query={Uri.EscapeDataString(query)}&limit=25&fmt=json", ct);
+        return result?.Releases ?? [];
+    }
+
     private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     private async Task<T?> GetAsync<T>(string key, string path, CancellationToken ct) where T : class

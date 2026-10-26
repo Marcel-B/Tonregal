@@ -401,6 +401,15 @@ public sealed class InboxImporterTests : IDisposable
         var job = Assert.Single(await ProcessAllAsync());
         Assert.Equal(album.ReleaseId, job.SelectedReleaseId);
 
+        // Exakter Titel vor Demo oder Remaster, auch wenn die Demo auf dem Album selbst steht.
+        _db.ImportJobs.RemoveRange(_db.ImportJobs);
+        await _db.SaveChangesAsync(Ct);
+        var demo = Candidate("Erster Song (demo)", 1.0);
+        var deluxe = Candidate("Erster Song", 1.0) with { ReleaseTitle = "Testalbum (Deluxe)" };
+        _lookup.Search["Testband|Erster Song"] = [demo, deluxe];
+        job = Assert.Single(await ProcessAllAsync());
+        Assert.Equal(deluxe.ReleaseId, job.SelectedReleaseId);
+
         // Viel zu lang (oder ohne Länge bei MusicBrainz): kein Vorschlag, nur die Liste.
         _db.ImportJobs.RemoveRange(_db.ImportJobs);
         await _db.SaveChangesAsync(Ct);

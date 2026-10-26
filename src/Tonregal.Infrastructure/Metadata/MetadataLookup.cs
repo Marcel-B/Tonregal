@@ -68,8 +68,10 @@ public sealed class MetadataLookup(
     public async Task<IReadOnlyList<RecordingCandidate>> SearchByTagsAsync(
         string artist, string title, string? album, int durationMs, CancellationToken ct)
     {
-        // Erst mit dem Album aus den Tags suchen: bei vielgespielten Songs stehen sonst Live-Mitschnitte
-        // und Compilations vorn und die Album-Aufnahme fällt aus der Trefferliste.
+        // Mit Album zuerst über das Release: dessen Trackliste ist vollständig, während die Recording-Suche
+        // bei vielgespielten Songs Live-Mitschnitte, Demos und Compilations nach vorn stellt.
+        var onRelease = string.IsNullOrWhiteSpace(album) ? [] : await ReleaseCandidatesAsync(artist, title, album, ct);
+
         IReadOnlyList<MbSearchRecording> onAlbum = string.IsNullOrWhiteSpace(album)
             ? []
             : await musicBrainz.SearchRecordingsAsync(artist, title, album, ct);
@@ -77,8 +79,8 @@ public sealed class MetadataLookup(
         var recordings = onAlbum.Concat(await musicBrainz.SearchRecordingsAsync(artist, title, null, ct))
             .Where(r => seenRecordings.Add(r.Id))
             .ToList();
-        var seenReleases = new HashSet<Guid>();
-        return recordings
+        var seenReleases = new HashSet<(Guid, Guid)>();
+        var found = recordings
             .Where(r => r.Score >= MinimumSearchScore)
             .SelectMany(r => ToCandidates(null, r.Score / 100.0, r.ToRecording(), album))
             .OrderByDescending(c => album is not null && c.Candidate.ReleaseTitle is { } t && Import.InboxImporter.SameTitle(t, album))
@@ -86,10 +88,57 @@ public sealed class MetadataLookup(
             .ThenByDescending(c => c.Candidate.Score)
             .ThenBy(c => c.Rank)
             .ThenBy(c => c.Date, StringComparer.Ordinal)
-            .Select(c => c.Candidate)
-            .Where(c => c.ReleaseId is not { } releaseId || seenReleases.Add(releaseId))
+            .Select(c => c.Candidate);
+        return onRelease.Concat(found)
+            .Where(c => c.ReleaseId is not { } releaseId || seenReleases.Add((releaseId, c.RecordingId)))
             .Take(MaxSearchCandidates)
             .ToList();
+    }
+
+    private const int MinimumReleaseSearchScore = 90;
+    private const int MaxSearchedReleases = 4;
+
+    /// <summary>
+    /// Die passenden Tracks der wahrscheinlichsten Releases zum Album aus den Tags: gleicher Titel vor
+    /// „Fallen (20th Anniversary)“, offizielle Studioalben vor dem Rest, die älteste Ausgabe zuerst.
+    /// Für alle Tracks eines Albums kommen so dieselben Releases (aus dem Cache) in derselben Reihenfolge.
+    /// </summary>
+    private async Task<List<RecordingCandidate>> ReleaseCandidatesAsync(string artist, string title, string album, CancellationToken ct)
+    {
+        var hits = (await musicBrainz.SearchReleasesAsync(artist, album, ct))
+            .Where(h => h.Score >= MinimumReleaseSearchScore && Import.InboxImporter.SameTitle(h.Title, album))
+            .OrderByDescending(h => Import.InboxImporter.SameText(h.Title, album))
+            .ThenBy(h => Rank(new MbRelease(h.Id, h.Title, h.Status, h.Date, null, null, h.ReleaseGroup, null)))
+            .ThenBy(h => h.Date is null)
+            .ThenBy(h => h.Date, StringComparer.Ordinal)
+            .Take(MaxSearchedReleases)
+            .ToList();
+
+        var candidates = new List<RecordingCandidate>();
+        foreach (var hit in hits)
+        {
+            var release = await musicBrainz.GetReleaseAsync(hit.Id, ct);
+            foreach (var medium in release?.Media ?? [])
+            {
+                var tracks = (medium.Tracks ?? [])
+                    .Where(t => t.Recording is not null && Import.InboxImporter.SameTitle(t.Title, title))
+                    .OrderByDescending(t => Import.InboxImporter.SameText(t.Title, title));
+                foreach (var track in tracks)
+                {
+                    var recording = track.Recording!;
+                    var credit = recording.ArtistCredit is { Count: > 0 } rc ? rc : release!.ArtistCredit ?? [];
+                    candidates.Add(new RecordingCandidate(
+                        recording.Id, null, track.Title, credit.Select(c => c.Artist.Name).ToList(), track.Length ?? recording.Length,
+                        release!.Id, release.ReleaseGroup?.Id, release.Title, release.ArtistCredit.Format(),
+                        release.ReleaseGroup?.PrimaryType, release.Status, release.Year,
+                        medium.Position, track.Position, medium.TrackCount,
+                        release.Date, release.Country, medium.Format, 1.0));
+                }
+            }
+        }
+
+        // Exakter Titel vor „Bring Me to Life (demo)“, über alle Releases hinweg.
+        return candidates.OrderByDescending(c => Import.InboxImporter.SameText(c.Title, title)).ToList();
     }
 
     private static IEnumerable<(RecordingCandidate Candidate, int Rank, string Date)> ToCandidates(
