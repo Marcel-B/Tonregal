@@ -61,6 +61,20 @@ public sealed class TagLibTagWriter : ITagWriter
         file.Save();
     }
 
+    public void WriteBasic(string path, string title, IReadOnlyList<string> artists, string album)
+    {
+        using var file = Open(path);
+        if (file is TagLib.Mpeg.AudioFile or TagLib.Riff.File)
+            file.GetTag(TagTypes.Id3v2, true);
+
+        var tag = file.Tag;
+        tag.Title = title;
+        tag.Performers = [.. artists];
+        tag.AlbumArtists = [artists[0]];
+        tag.Album = album;
+        file.Save();
+    }
+
     private static File Open(string path)
     {
         try

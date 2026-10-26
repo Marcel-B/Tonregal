@@ -321,6 +321,40 @@ public sealed class InboxImporterTests : IDisposable
         Assert.Equal(new InboxSyncResult(0, 0, 0, 0), await Importer().SyncAsync(Ct));
     }
 
+    [Fact]
+    public async Task Altbestand_wird_eingelesen_aber_nie_veraendert()
+    {
+        var legacy = Path.Combine(_library.MusicRoot, "Altbestand");
+        _library.Copy("song1.mp3", Path.Combine(legacy, "Band", "Album"), "01.mp3");
+        _library.Copy("song2.flac", Path.Combine(legacy, "Band", "Album"), "02.flac");
+        Drop("song3.m4a", "Neu/03.m4a");
+        var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(TestLibrary.TestData, "song1.mp3"))));
+        var album = new Album { Title = "Testalbum", AlbumArtist = new Artist { Name = "Testband", SortName = "Testband" } };
+        _db.AudioFiles.Add(new AudioFile { Path = "Testband/2024 - Testalbum/01.mp3", FileHash = hash, Track = new Track { Title = "Erster Song", Album = album } });
+        await _db.SaveChangesAsync(Ct);
+
+        var importer = Importer();
+        Assert.Equal(new InboxSyncResult(2, 0, 0, 0), await importer.SyncLegacyAsync(Ct));
+        await importer.SyncAsync(Ct);
+
+        // Die Inbox geht vor, auch wenn ihr Job jünger ist.
+        Assert.Equal(FileSource.Inbox, (await importer.ProcessNextAsync(Ct))!.Source);
+        while (await importer.ProcessNextAsync(Ct) is not null)
+        {
+        }
+
+        var jobs = await _db.ImportJobs.AsNoTracking().Where(j => j.Source == FileSource.Legacy).OrderBy(j => j.SourcePath).ToListAsync(Ct);
+        Assert.Equal(["Band/Album/01.mp3", "Band/Album/02.flac"], jobs.Select(j => j.SourcePath));
+        Assert.Equal(ImportState.Rejected, jobs[0].State);
+        Assert.StartsWith(ImportJob.AlreadyInLibrary, jobs[0].Error);
+        // Schon vorhanden: bleibt trotzdem im Altbestand liegen, nichts im Papierkorb.
+        Assert.True(File.Exists(Path.Combine(legacy, "Band", "Album", "01.mp3")));
+        Assert.False(Directory.Exists(Path.Combine(_library.Library, ".trash")));
+
+        // Unveränderte Dateien bekommen keinen neuen Job, auch nicht nach dem Ablehnen.
+        Assert.Equal(new InboxSyncResult(0, 0, 0, 0), await importer.SyncLegacyAsync(Ct));
+    }
+
     [Theory]
     [InlineData("Garbage - Use Me.mp3", null, null, "Use Me", "Garbage")]
     [InlineData("Garbage - Use Me.mp3", "Titel 3", "Garbage", "Use Me", "Garbage")]

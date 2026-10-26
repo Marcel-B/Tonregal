@@ -187,6 +187,44 @@ public sealed class LibraryImporterTests : IDisposable
         Assert.Equal(_track.ReleaseId, _reader.Read(Path.Combine(_library.Library, result.LibraryPath!)).Tags.MusicBrainzReleaseId);
     }
 
+    [Fact]
+    public async Task Altbestand_wird_kopiert_und_bleibt_liegen()
+    {
+        var job = await MatchedJobAsync("song1.mp3", "Forever Young/01.mp3");
+        var legacy = Path.Combine(_library.MusicRoot, "Altbestand", "Forever Young");
+        Directory.CreateDirectory(legacy);
+        File.Move(Path.Combine(Inbox, "Forever Young", "01.mp3"), Path.Combine(legacy, "01.mp3"));
+        job.Source = FileSource.Legacy;
+        await _db.SaveChangesAsync(Ct);
+
+        var result = await Importer().ImportAsync(job.Id, Ct);
+
+        Assert.Null(result.Error);
+        Assert.Equal(ImportState.Imported, result.State);
+        Assert.True(File.Exists(Path.Combine(_library.Library, result.LibraryPath!)));
+        Assert.True(File.Exists(Path.Combine(legacy, "01.mp3")));
+        Assert.Null(_reader.Read(Path.Combine(legacy, "01.mp3")).Tags.MusicBrainzRecordingId);
+    }
+
+    [Fact]
+    public async Task Ohne_Treffer_ins_Sammelalbum_des_Interpreten()
+    {
+        var target = Path.Combine(Inbox, "Garbage");
+        _library.Copy("song1.mp3", target, "Garbage - Subhuman.mp3");
+        new TagLibTagWriter().WriteBasic(Path.Combine(target, "Garbage - Subhuman.mp3"), "Titel 3", ["Garbage"], "Non-Album-Song");
+        var job = new ImportJob { SourcePath = "Garbage/Garbage - Subhuman.mp3", State = ImportState.NeedsReview };
+        _db.ImportJobs.Add(job);
+        await _db.SaveChangesAsync(Ct);
+
+        var result = await Importer().ImportUnmatchedAsync(job.Id, Ct);
+
+        Assert.Null(result.Error);
+        Assert.Equal("Garbage/Unbekanntes Album/Subhuman.mp3", result.LibraryPath);
+        var tags = _reader.Read(Path.Combine(_library.Library, result.LibraryPath!)).Tags;
+        Assert.Equal(("Subhuman", "Garbage", "Unbekanntes Album"), (tags.Title, tags.AlbumArtist, tags.Album));
+        Assert.False(Directory.Exists(target));
+    }
+
     private sealed class FakeLookup(Func<Guid, ReleaseTrack?> track) : IMetadataLookup
     {
         public Task<IReadOnlyList<RecordingCandidate>> LookupAsync(Fingerprint fingerprint, CancellationToken ct) =>

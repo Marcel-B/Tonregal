@@ -12,4 +12,10 @@ public interface ILibraryImporter
     /// die Datei unverändert in der Inbox und der Job trägt den Fehler.
     /// </summary>
     Task<ImportJob> ImportAsync(int jobId, CancellationToken ct);
+
+    /// <summary>
+    /// Übernimmt einen Job ohne passenden Treffer mit Titel und Interpret aus Tags oder Dateinamen
+    /// in den Sammelordner <c>{Interpret}/Unbekanntes Album</c>. Fehler wie bei <see cref="ImportAsync"/>.
+    /// </summary>
+    Task<ImportJob> ImportUnmatchedAsync(int jobId, CancellationToken ct);
 }

@@ -12,18 +12,33 @@ import CandidateTable from '@/components/CandidateTable.vue'
 import InboxUpload from '@/components/InboxUpload.vue'
 import ReleaseCover from '@/components/ReleaseCover.vue'
 import { useStatusStore } from '@/stores/status'
-import { api, formatDuration, type ImportJob, type ImportJobCandidates, type ImportState, type RecordingCandidate } from '@/api'
+import {
+  api,
+  formatDuration,
+  type ImportJob,
+  type ImportJobCandidates,
+  type ImportSource,
+  type ImportState,
+  type LegacySummary,
+  type RecordingCandidate,
+} from '@/api'
+
+/** Inbox (Dateien werden verschoben) oder Altbestand (Massenlauf, Dateien werden nur kopiert). */
+const props = withDefaults(defineProps<{ source?: ImportSource }>(), { source: 'Inbox' })
+const isLegacy = computed(() => props.source === 'Legacy')
 
 const status = useStatusStore()
 const jobs = ref<ImportJob[]>([])
+const legacy = ref<LegacySummary | null>(null)
 const error = ref<string | null>(null)
 const loaded = ref(false)
 
 async function load() {
   try {
-    const response = await api.inbox()
+    const response = await api.inbox(props.source)
     jobs.value = response.jobs
     status.inbox = response.status
+    legacy.value = isLegacy.value ? await api.legacy() : null
     error.value = null
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -42,6 +57,10 @@ watch(
   },
 )
 onMounted(load)
+watch(() => props.source, () => {
+  filter.value = 'all'
+  load()
+})
 onUnmounted(() => clearTimeout(reloadTimer))
 
 type Filter = 'all' | 'review' | 'matched' | 'pending'
@@ -117,6 +136,9 @@ const accept = (job: ImportJob) =>
     await api.selectCandidate(job.id, job.selected!.recordingId, job.selected!.releaseId!)
     status.inbox = await api.importJobs([job.id])
   })
+// Kein Treffer passt: mit Titel und Interpret aus Tags oder Dateiname ins Sammelalbum.
+const importUnmatched = (job: ImportJob) => run(() => api.importUnmatched(job.id))
+const startLegacy = () => run(() => api.scanLegacy())
 const reject = (job: ImportJob) => run(() => api.rejectImport(job.id))
 
 async function scan() {
@@ -126,7 +148,7 @@ async function scan() {
 const retry = (job: ImportJob) => run(() => api.retryImport(job.id))
 
 const problems = computed(() => jobs.value.filter((j) => j.state === 'NeedsReview' || (j.error && j.state !== 'Rejected')))
-const retryAll = () => run(() => api.retryAllImports())
+const retryAll = () => run(() => api.retryAllImports(props.source))
 
 // Bericht zum Weitergeben. Über http im Tailnet gibt es keine Clipboard-API, daher Textfeld plus execCommand.
 const report = ref('')
@@ -138,7 +160,7 @@ async function showReport() {
   report.value = 'Lade …'
   reportVisible.value = true
   try {
-    report.value = await api.inboxReport()
+    report.value = await api.inboxReport(props.source)
   } catch (e) {
     report.value = e instanceof Error ? e.message : String(e)
   }
@@ -164,6 +186,49 @@ async function showCandidates(job: ImportJob) {
   candidates.value = await api.importCandidates(job.id)
 }
 
+// Tastenkürzel für lange Prüflisten: j/k oder Pfeile wählen eine Zeile, dann
+// Enter übernehmen, l Kandidaten, u Sammelalbum, r erneut abgleichen, x verwerfen.
+const focusedId = ref<number | null>(null)
+const focused = computed(() => visibleJobs.value.find((j) => j.id === focusedId.value) ?? null)
+function move(step: number) {
+  const list = visibleJobs.value
+  if (!list.length) return
+  const index = list.findIndex((j) => j.id === focusedId.value)
+  const next = index < 0 ? 0 : Math.min(list.length - 1, Math.max(0, index + step))
+  focusedId.value = list[next]!.id
+  requestAnimationFrame(() => document.querySelector('.focused-row')?.scrollIntoView({ block: 'nearest' }))
+}
+// Nach einer Aktion verschwindet die Zeile meist; dann rückt die nächste nach.
+watch(visibleJobs, (list, before) => {
+  if (focusedId.value === null || list.some((j) => j.id === focusedId.value)) return
+  const index = before.findIndex((j) => j.id === focusedId.value)
+  const next = list[Math.min(Math.max(index, 0), list.length - 1)]
+  focusedId.value = next?.id ?? null
+})
+function onKey(event: KeyboardEvent) {
+  if (event.metaKey || event.ctrlKey || event.altKey || candidatesVisible.value || reportVisible.value) return
+  if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable]')) return
+  const job = focused.value
+  const actions: Record<string, () => unknown> = {
+    j: () => move(1),
+    ArrowDown: () => move(1),
+    k: () => move(-1),
+    ArrowUp: () => move(-1),
+    Enter: () => job && (job.state === 'Matched' ? importJobs([job]) : canAccept(job) && accept(job)),
+    l: () => job?.candidateCount && showCandidates(job),
+    u: () => job?.state === 'NeedsReview' && importUnmatched(job),
+    r: () => job && job.state !== 'Rejected' && retry(job),
+    x: () => job && job.state !== 'Rejected' && reject(job),
+  }
+  const action = actions[event.key]
+  if (!action) return
+  event.preventDefault()
+  action()
+}
+onMounted(() => window.addEventListener('keydown', onKey))
+onUnmounted(() => window.removeEventListener('keydown', onKey))
+const canAccept = (job: ImportJob) => job.state === 'NeedsReview' && !!job.selected?.releaseId
+
 async function select(candidate: RecordingCandidate) {
   const job = candidatesFor.value
   if (!job || !candidate.releaseId) return
@@ -174,7 +239,7 @@ async function select(candidate: RecordingCandidate) {
 
 <template>
   <div class="flex flex-wrap items-center gap-3 mb-6">
-    <h1 class="text-2xl font-semibold mr-auto">Inbox</h1>
+    <h1 class="text-2xl font-semibold mr-auto">{{ isLegacy ? 'Altbestand' : 'Inbox' }}</h1>
     <span v-if="progress" class="text-sm text-surface-500" data-testid="inbox-progress">{{ progress }}</span>
     <Button
       v-if="matched().length"
@@ -202,22 +267,61 @@ async function select(candidate: RecordingCandidate) {
       data-testid="retry-all"
       @click="retryAll"
     />
-    <Button label="Inbox prüfen" icon="pi pi-refresh" severity="secondary" size="small" :loading="status.inbox?.running" @click="scan" />
-    <InboxUpload @uploaded="scan" />
+    <template v-if="isLegacy">
+      <Button
+        label="Altbestand einlesen"
+        icon="pi pi-play"
+        size="small"
+        :loading="status.inbox?.running"
+        :disabled="legacy?.exists === false"
+        data-testid="start-legacy"
+        @click="startLegacy"
+      />
+    </template>
+    <template v-else>
+      <Button label="Inbox prüfen" icon="pi pi-refresh" severity="secondary" size="small" :loading="status.inbox?.running" @click="scan" />
+      <InboxUpload @uploaded="scan" />
+    </template>
+  </div>
+  <div v-if="isLegacy && legacy" class="mb-6 text-sm text-surface-500" data-testid="legacy-summary">
+    <p v-if="!legacy.exists">
+      Den Ordner <code>{{ legacy.path }}</code> gibt es nicht. Leg die MP3-Kopien dort ab oder trag den Pfad als
+      <code>Tonregal:LegacyPath</code> in <code>appsettings.Production.json</code> ein.
+    </p>
+    <p v-else>
+      <code>{{ legacy.path }}</code> · {{ legacy.total }} Dateien eingelesen: {{ legacy.imported }} übernommen,
+      {{ legacy.alreadyInLibrary }} schon da, {{ legacy.needsReview }} zu prüfen, {{ legacy.pending }} offen.
+      Erkannte Dateien werden ordnerweise automatisch in die Library kopiert, die Originale bleiben unverändert.
+    </p>
   </div>
   <Message v-if="actionError" severity="error" class="mb-4">{{ actionError }}</Message>
 
   <Message v-if="error" severity="error" class="mb-4">{{ error }}</Message>
   <Message v-if="status.inbox?.lastError" severity="warn" class="mb-4">{{ status.inbox.lastError }}</Message>
 
-  <Message v-if="loaded && !jobs.length" severity="info">
+  <Message v-if="loaded && !jobs.length && isLegacy" severity="info">Gerade ist nichts zu prüfen.</Message>
+  <Message v-else-if="loaded && !jobs.length" severity="info">
     Die Inbox ist leer. Zieh Album-Ordner oder Dateien einfach hierher, oder lege sie in <code>Musik/Inbox</code> auf der T7 ab.
     Tonregal erkennt sie dann automatisch.
   </Message>
 
   <template v-else-if="jobs.length">
-    <SelectButton v-model="filter" :options="filterOptions" option-label="label" option-value="value" :allow-empty="false" class="mb-4" />
-    <DataTable :value="visibleJobs" data-key="id" size="small" row-group-mode="subheader" group-rows-by="group">
+    <div class="flex flex-wrap items-center gap-4 mb-4">
+      <SelectButton v-model="filter" :options="filterOptions" option-label="label" option-value="value" :allow-empty="false" />
+      <span class="text-xs text-surface-500" data-testid="shortcuts">
+        Tasten: <kbd>j</kbd>/<kbd>k</kbd> Zeile · <kbd>Enter</kbd> übernehmen · <kbd>l</kbd> Kandidaten · <kbd>u</kbd> Sammelalbum ·
+        <kbd>r</kbd> neu abgleichen · <kbd>x</kbd> verwerfen
+      </span>
+    </div>
+    <DataTable
+      :value="visibleJobs"
+      data-key="id"
+      size="small"
+      row-group-mode="subheader"
+      group-rows-by="group"
+      :row-class="(job: ImportJob) => (job.id === focusedId ? 'focused-row !bg-primary-50 dark:!bg-primary-900/30' : '')"
+      @row-click="(e: { data: ImportJob }) => (focusedId = e.data.id)"
+    >
       <template #groupheader="{ data }">
         <div class="flex items-center gap-3">
           <span class="font-semibold"><i class="pi pi-folder text-surface-500 mr-2" />{{ data.group || 'Ohne Ordner' }}</span>
@@ -289,6 +393,18 @@ async function select(candidate: RecordingCandidate) {
               @click="accept(data)"
             />
             <Button
+              v-if="data.state === 'NeedsReview'"
+              icon="pi pi-folder-open"
+              text
+              rounded
+              size="small"
+              severity="secondary"
+              aria-label="Ohne Treffer ins Sammelalbum übernehmen"
+              title="Ohne Treffer ins Sammelalbum „Unbekanntes Album“ übernehmen (u)"
+              data-testid="import-unmatched"
+              @click="importUnmatched(data)"
+            />
+            <Button
               v-if="data.candidateCount"
               icon="pi pi-list"
               text
@@ -307,7 +423,7 @@ async function select(candidate: RecordingCandidate) {
               size="small"
               severity="secondary"
               aria-label="Verwerfen"
-              title="Verwerfen (Datei bleibt in der Inbox)"
+              :title="isLegacy ? 'Verwerfen (Datei bleibt im Altbestand)' : 'Verwerfen (Datei bleibt in der Inbox)'"
               data-testid="reject-job"
               @click="reject(data)"
             />

@@ -150,6 +150,22 @@ export interface ImportJob {
   startedAt: string
 }
 
+/** Woher eine Datei kommt: Inbox (wird verschoben) oder Altbestand (wird nur kopiert). */
+export type ImportSource = 'Inbox' | 'Legacy'
+
+/** Massenlauf über den Altbestand; je Datei zählt ihr jüngster Durchlauf. */
+export interface LegacySummary {
+  path: string
+  exists: boolean
+  total: number
+  pending: number
+  matched: number
+  needsReview: number
+  imported: number
+  alreadyInLibrary: number
+  rejected: number
+}
+
 export interface InboxStatus {
   running: boolean
   currentPath: string | null
@@ -233,20 +249,23 @@ export const api = {
   startScan: () => request<ScanStatus>('POST', '/library/scan'),
   tools: () => get<ToolStatus>('/tools'),
   candidates: (fileId: number) => get<MatchResponse>(`/library/files/${fileId}/candidates`),
-  inbox: () => get<InboxResponse>('/inbox'),
+  inbox: (source: ImportSource = 'Inbox') => get<InboxResponse>(`/inbox?source=${source}`),
   scanInbox: () => request<InboxStatus>('POST', '/inbox/scan'),
   importCandidates: (jobId: number) => get<ImportJobCandidates>(`/inbox/${jobId}/candidates`),
   retryImport: (jobId: number) => request<ImportJob>('POST', `/inbox/${jobId}/retry`),
   selectCandidate: (jobId: number, recordingId: string, releaseId: string) =>
     request<ImportJob>('POST', `/inbox/${jobId}/select`, { recordingId, releaseId }),
-  retryAllImports: () => request<{ count: number }>('POST', '/inbox/retry-all'),
-  inboxReport: async () => {
-    const response = await fetch('/api/inbox/report')
+  retryAllImports: (source: ImportSource = 'Inbox') => request<{ count: number }>('POST', `/inbox/retry-all?source=${source}`),
+  inboxReport: async (source: ImportSource = 'Inbox') => {
+    const response = await fetch(`/api/inbox/report?source=${source}`)
     if (!response.ok) throw new Error(`/inbox/report: HTTP ${response.status}`)
     return response.text()
   },
   rejectImport: (jobId: number) => request<void>('POST', `/inbox/${jobId}/reject`),
   importJobs: (jobIds: number[]) => request<InboxStatus>('POST', '/inbox/import', { jobIds }),
+  importUnmatched: (jobId: number) => request<ImportJob>('POST', `/inbox/${jobId}/import-unmatched`),
+  legacy: () => get<LegacySummary>('/inbox/legacy'),
+  scanLegacy: () => request<InboxStatus>('POST', '/inbox/legacy/scan'),
   releaseCoverUrl: (releaseId: string) => `https://coverartarchive.org/release/${releaseId}/front-250`,
   fetchCover: (albumId: number) => request<void>('POST', `/library/albums/${albumId}/cover`),
   alignRelease: (albumId: number) => request<ReleaseAlignResult>('POST', `/library/albums/${albumId}/align-release`),

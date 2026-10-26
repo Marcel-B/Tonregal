@@ -9,6 +9,7 @@ using Tonregal.Domain.Entities;
 using Tonregal.Infrastructure.Import;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Inbox;
+using Tonregal.Web.Library;
 
 namespace Tonregal.Web.Api;
 
@@ -39,6 +40,10 @@ public sealed record UploadResponse(string Path);
 
 public sealed record RetryAllResponse(int Count);
 
+/// <summary>Massenlauf über den Altbestand; je Datei zählt ihr jüngster Job.</summary>
+public sealed record LegacySummary(
+    string Path, bool Exists, int Total, int Pending, int Matched, int NeedsReview, int Imported, int AlreadyInLibrary, int Rejected);
+
 public sealed record ImportJobCandidates(int JobId, Guid? SelectedRecordingId, Guid? SelectedReleaseId, IReadOnlyList<RecordingCandidate> Candidates);
 
 public static class InboxApi
@@ -49,12 +54,14 @@ public static class InboxApi
 
         // Offene Jobs, nach Ordner und Dateiname sortiert; dazu, was in den letzten Stunden als
         // byte-gleiche Kopie verworfen wurde, damit ein Upload nicht kommentarlos verschwindet.
-        inbox.MapGet("/", async (TonregalDbContext db, InboxService service, TimeProvider time, CancellationToken ct) =>
+        inbox.MapGet("/", async (TonregalDbContext db, InboxService service, TimeProvider time, CancellationToken ct, FileSource source = FileSource.Inbox) =>
         {
             var since = time.GetUtcNow().AddHours(-12);
             var jobs = await db.ImportJobs.AsNoTracking()
+                .Where(j => j.Source == source)
                 .Where(j => ImportJob.ActiveStates.Contains(j.State)
-                    || (j.State == ImportState.Rejected && j.FinishedAt > since && j.Error!.StartsWith(ImportJob.AlreadyInLibrary)))
+                    || (source == FileSource.Inbox && j.State == ImportState.Rejected && j.FinishedAt > since
+                        && j.Error!.StartsWith(ImportJob.AlreadyInLibrary)))
                 .ToListAsync(ct);
             return new InboxResponse(service.Status, jobs
                 .OrderBy(j => j.SourcePath, StringComparer.OrdinalIgnoreCase)
@@ -88,10 +95,10 @@ public static class InboxApi
         });
 
         // Alle Problemfälle von vorn, z. B. nach einem Update der Erkennung.
-        inbox.MapPost("/retry-all", async (TonregalDbContext db, InboxService service, CancellationToken ct) =>
+        inbox.MapPost("/retry-all", async (TonregalDbContext db, InboxService service, CancellationToken ct, FileSource source = FileSource.Inbox) =>
         {
             var jobs = await db.ImportJobs
-                .Where(j => ImportJob.ActiveStates.Contains(j.State) && (j.State == ImportState.NeedsReview || j.Error != null))
+                .Where(j => j.Source == source && ImportJob.ActiveStates.Contains(j.State) && (j.State == ImportState.NeedsReview || j.Error != null))
                 .ToListAsync(ct);
             foreach (var job in jobs)
                 job.Reset();
@@ -101,10 +108,10 @@ public static class InboxApi
         });
 
         // Problemfälle als Text, zum Kopieren und Weitergeben.
-        inbox.MapGet("/report", async (TonregalDbContext db, TimeProvider time, CancellationToken ct) =>
+        inbox.MapGet("/report", async (TonregalDbContext db, TimeProvider time, CancellationToken ct, FileSource source = FileSource.Inbox) =>
         {
             var jobs = (await db.ImportJobs.AsNoTracking()
-                    .Where(j => ImportJob.ActiveStates.Contains(j.State))
+                    .Where(j => j.Source == source && ImportJob.ActiveStates.Contains(j.State))
                     .ToListAsync(ct))
                 .Where(InboxReport.IsProblem)
                 .OrderBy(j => j.SourcePath, StringComparer.OrdinalIgnoreCase)
@@ -130,6 +137,51 @@ public static class InboxApi
             job.Error = null;
             await db.SaveChangesAsync(ct);
             return TypedResults.Ok(ToDto(job));
+        });
+
+        // Kein Treffer passt: mit Titel und Interpret aus Tags oder Dateiname ins Sammelalbum.
+        inbox.MapPost("/{id:int}/import-unmatched", async Task<IResult> (
+            int id, TonregalDbContext db, ILibraryImporter importer, LibraryScanService scans, CancellationToken ct) =>
+        {
+            if (await db.ImportJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct) is not { } existing)
+                return TypedResults.NotFound();
+            if (existing.State != ImportState.NeedsReview)
+                return TypedResults.Problem("Nur zu prüfende Dateien lassen sich ohne Treffer übernehmen", statusCode: StatusCodes.Status409Conflict);
+            var job = await importer.ImportUnmatchedAsync(id, ct);
+            if (job.State == ImportState.Imported)
+                scans.RequestScan();
+            return job.Error is { } error
+                ? TypedResults.Problem(error, statusCode: StatusCodes.Status422UnprocessableEntity)
+                : TypedResults.Ok(ToDto(job));
+        });
+
+        // Altbestand: Stand des Massenlaufs und Start.
+        inbox.MapGet("/legacy", async (TonregalDbContext db, IOptions<TonregalOptions> options, CancellationToken ct) =>
+        {
+            var states = (await db.ImportJobs.AsNoTracking()
+                    .Where(j => j.Source == FileSource.Legacy)
+                    .Select(j => new { j.Id, j.SourcePath, j.State, j.Error })
+                    .ToListAsync(ct))
+                .GroupBy(j => j.SourcePath, StringComparer.Ordinal)
+                .Select(g => g.MaxBy(j => j.Id)!)
+                .ToList();
+            var root = options.Value.Legacy;
+            return new LegacySummary(
+                root, Directory.Exists(root), states.Count,
+                states.Count(s => s.State is ImportState.New or ImportState.Fingerprinted),
+                states.Count(s => s.State == ImportState.Matched),
+                states.Count(s => s.State == ImportState.NeedsReview),
+                states.Count(s => s.State == ImportState.Imported),
+                states.Count(s => s.State == ImportState.Rejected && s.Error != null && s.Error.StartsWith(ImportJob.AlreadyInLibrary)),
+                states.Count(s => s.State == ImportState.Rejected && (s.Error == null || !s.Error.StartsWith(ImportJob.AlreadyInLibrary))));
+        });
+
+        inbox.MapPost("/legacy/scan", (InboxService service, IOptions<TonregalOptions> options) =>
+        {
+            if (!Directory.Exists(options.Value.Legacy))
+                return Results.Problem($"Den Altbestand-Ordner {options.Value.Legacy} gibt es nicht", statusCode: StatusCodes.Status404NotFound);
+            service.RequestLegacyRun();
+            return Results.Accepted("/api/inbox/legacy", service.Status);
         });
 
         // Datei bleibt in der Inbox, bekommt aber keinen neuen Job, solange sie sich nicht ändert.

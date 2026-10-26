@@ -14,6 +14,9 @@ public sealed class TonregalOptions
     public string DatabasePath { get; set; } = "";
     public string LogPath { get; set; } = "";
 
+    /// <summary>Altbestand (MP3-Sicherungskopien); Tonregal liest dort nur und kopiert in die Library.</summary>
+    public string LegacyPath { get; set; } = "";
+
     /// <summary>Datei, deren Existenz anzeigt, dass die SSD gemountet ist.</summary>
     public string MountMarkerFile { get; set; } = ".tonregal-mount";
 
@@ -22,10 +25,15 @@ public sealed class TonregalOptions
 
     public string Inbox => Resolve(InboxPath, "Inbox");
     public string Library => Resolve(LibraryPath, "Library");
+    public string Legacy => Resolve(LegacyPath, "Altbestand");
     public string Database => Resolve(DatabasePath, Path.Combine("app", "tonregal.db"));
     public string Logs => Resolve(LogPath, "logs");
     public string Trash => Path.Combine(Library, ".trash");
     public string MountMarker => Path.Combine(MusicRoot, MountMarkerFile);
+
+    /// <summary>Ordner, auf den sich <c>ImportJob.SourcePath</c> bezieht.</summary>
+    public string SourceRoot(Domain.Entities.FileSource source) =>
+        source == Domain.Entities.FileSource.Legacy ? Legacy : Inbox;
 
     private string Resolve(string configured, string defaultRelative) =>
         string.IsNullOrWhiteSpace(configured)

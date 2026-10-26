@@ -7,6 +7,13 @@ export const routes = [
   { path: '/', name: 'dashboard', component: DashboardView, meta: { title: 'Übersicht', icon: 'pi pi-home' } },
   { path: '/library', name: 'library', component: () => import('./views/LibraryView.vue'), meta: { title: 'Bibliothek', icon: 'pi pi-book' } },
   { path: '/inbox', name: 'inbox', component: () => import('./views/InboxView.vue'), meta: { title: 'Inbox', icon: 'pi pi-inbox' } },
+  {
+    path: '/legacy',
+    name: 'legacy',
+    component: () => import('./views/InboxView.vue'),
+    props: { source: 'Legacy' },
+    meta: { title: 'Altbestand', icon: 'pi pi-history' },
+  },
   { path: '/duplicates', name: 'duplicates', component: () => import('./views/DuplicatesView.vue'), meta: { title: 'Dubletten', icon: 'pi pi-clone' } },
 ]
 

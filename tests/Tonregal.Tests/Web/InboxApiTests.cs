@@ -140,4 +140,27 @@ public sealed class InboxApiTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_library.MusicRoot, "ausserhalb.flac")));
         Assert.DoesNotContain(Directory.GetFiles(Path.Combine(_library.MusicRoot, "Inbox", "Neues Album")), f => Path.GetFileName(f).StartsWith('.'));
     }
+
+    [Fact]
+    public async Task Altbestand_hat_eine_eigene_Liste_und_einen_Stand()
+    {
+        await WaitForRunAsync();
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/inbox/legacy/scan", null, Ct)).StatusCode);
+
+        _library.Copy("song2.flac", Path.Combine(_library.MusicRoot, "Altbestand", "Alt"), "02.flac");
+        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync("/api/inbox/legacy/scan", null, Ct)).StatusCode);
+        LegacySummary? summary = null;
+        for (var i = 0; i < 200 && summary?.Total != 1; i++)
+        {
+            await Task.Delay(50, Ct);
+            summary = await _client.GetFromJsonAsync<LegacySummary>("/api/inbox/legacy", Json, Ct);
+        }
+
+        Assert.Equal(1, summary!.Total);
+        Assert.True(summary.Exists);
+        var legacy = await _client.GetFromJsonAsync<InboxResponse>("/api/inbox?source=Legacy", Json, Ct);
+        Assert.Equal("Alt/02.flac", Assert.Single(legacy!.Jobs).Path);
+        var inbox = await _client.GetFromJsonAsync<InboxResponse>("/api/inbox", Json, Ct);
+        Assert.Equal("Testalbum/01.mp3", Assert.Single(inbox!.Jobs).Path);
+    }
 }

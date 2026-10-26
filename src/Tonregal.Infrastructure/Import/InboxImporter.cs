@@ -119,16 +119,83 @@ public sealed partial class InboxImporter(
         return new InboxSyncResult(created, restarted, removed, waiting);
     }
 
+    public async Task<InboxSyncResult> SyncLegacyAsync(CancellationToken ct)
+    {
+        var o = options.Value;
+        if (!File.Exists(o.MountMarker))
+            throw new LibraryUnavailableException($"Mount-Marker {o.MountMarker} fehlt – ist die SSD gemountet?");
+        var root = Path.GetFullPath(o.Legacy);
+        if (!Directory.Exists(root))
+            throw new IOException($"Den Altbestand-Ordner {root} gibt es nicht");
+
+        // Je Pfad zählt der jüngste Job: übernommene, verworfene und schon vorhandene Dateien
+        // bekommen keinen neuen, solange sie sich nicht ändern.
+        var latest = (await db.ImportJobs.Where(j => j.Source == FileSource.Legacy).ToListAsync(ct))
+            .GroupBy(j => j.SourcePath, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.MaxBy(j => j.Id)!, StringComparer.Ordinal);
+        var present = new HashSet<string>(StringComparer.Ordinal);
+        int created = 0, restarted = 0, removed = 0;
+
+        foreach (var full in LibraryScanner.EnumerateAudioFiles(root))
+        {
+            var relative = ToRelative(root, full);
+            present.Add(relative);
+            FileInfo info;
+            try
+            {
+                info = new FileInfo(full);
+                _ = info.Length;
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+
+            var modifiedAt = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
+            latest.TryGetValue(relative, out var job);
+            if (job is not null && job.SizeBytes == info.Length && job.ModifiedAt == modifiedAt)
+                continue;
+
+            if (job is not null && ImportJob.ActiveStates.Contains(job.State))
+            {
+                job.Reset();
+                restarted++;
+            }
+            else
+            {
+                job = new ImportJob { SourcePath = relative, Source = FileSource.Legacy, StartedAt = time.GetUtcNow() };
+                db.ImportJobs.Add(job);
+                created++;
+            }
+
+            job.SizeBytes = info.Length;
+            job.ModifiedAt = modifiedAt;
+        }
+
+        foreach (var job in latest.Values.Where(j => ImportJob.ActiveStates.Contains(j.State) && !present.Contains(j.SourcePath)))
+        {
+            Reject(job, ImportJob.VanishedReason);
+            removed++;
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Altbestand: {Created} neu, {Restarted} geändert, {Removed} verschwunden", created, restarted, removed);
+        return new InboxSyncResult(created, restarted, removed, 0);
+    }
+
     public async Task<ImportJob?> ProcessNextAsync(CancellationToken ct)
     {
+        // Die Inbox geht vor: ein Massenlauf über den Altbestand soll neue Käufe nicht stundenlang aufhalten.
         var job = await db.ImportJobs
-            .Where(j => j.Source == FileSource.Inbox && (j.State == ImportState.New || j.State == ImportState.Fingerprinted))
-            .OrderBy(j => j.Id)
+            .Where(j => (j.Source == FileSource.Inbox || j.Source == FileSource.Legacy)
+                && (j.State == ImportState.New || j.State == ImportState.Fingerprinted))
+            .OrderBy(j => j.Source == FileSource.Inbox ? 0 : 1)
+            .ThenBy(j => j.Id)
             .FirstOrDefaultAsync(ct);
         if (job is null)
             return null;
 
-        var path = Path.Combine(Path.GetFullPath(options.Value.Inbox), job.SourcePath);
+        var path = Path.Combine(Path.GetFullPath(options.Value.SourceRoot(job.Source)), job.SourcePath);
         if (!File.Exists(path))
         {
             Reject(job, ImportJob.VanishedReason);
@@ -195,7 +262,7 @@ public sealed partial class InboxImporter(
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Inbox: {Path} → {State} ({Score:P0}) {Reason}", job.SourcePath, job.State, job.MatchScore ?? 0, job.ReviewReason);
 
-        await ApplyAlbumGroupAsync(job.Group, ct);
+        await ApplyAlbumGroupAsync(job.Source, job.Group, ct);
         return job;
     }
 
@@ -300,9 +367,14 @@ public sealed partial class InboxImporter(
         if (existing is null)
             return false;
 
+        // Der Altbestand bleibt unangetastet; nur die Inbox-Kopie wandert in den Papierkorb.
         var o = options.Value;
-        LibraryTrash.Move(o.Trash, path, Path.Combine("Inbox", job.SourcePath), time.GetUtcNow());
-        LibraryImporter.RemoveEmptyFolders(Path.GetDirectoryName(path)!, Path.GetFullPath(o.Inbox));
+        if (job.Source == FileSource.Inbox)
+        {
+            LibraryTrash.Move(o.Trash, path, Path.Combine("Inbox", job.SourcePath), time.GetUtcNow());
+            LibraryImporter.RemoveEmptyFolders(Path.GetDirectoryName(path)!, Path.GetFullPath(o.Inbox));
+        }
+
         Reject(job, ImportJob.AlreadyInLibrary + existing);
         await db.SaveChangesAsync(ct);
         return true;
@@ -401,13 +473,13 @@ public sealed partial class InboxImporter(
     /// Dateien eines Inbox-Ordners sind ein Album-Kandidat: Steht ein Release bei der Mehrheit der
     /// Dateien unter den guten Treffern, bekommen alle Dateien, bei denen es vorkommt, dieses Release.
     /// </summary>
-    private async Task ApplyAlbumGroupAsync(string group, CancellationToken ct)
+    private async Task ApplyAlbumGroupAsync(FileSource source, string group, CancellationToken ct)
     {
         if (group.Length == 0)
             return;
         var prefix = group + "/";
         var jobs = (await db.ImportJobs
-                .Where(j => j.Source == FileSource.Inbox && ImportJob.ActiveStates.Contains(j.State) && j.SourcePath.StartsWith(prefix))
+                .Where(j => j.Source == source && ImportJob.ActiveStates.Contains(j.State) && j.SourcePath.StartsWith(prefix))
                 .ToListAsync(ct))
             .Where(j => j.Group == group)
             .ToList();

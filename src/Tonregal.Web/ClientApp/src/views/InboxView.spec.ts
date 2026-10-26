@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import InboxView from './InboxView.vue'
@@ -28,10 +28,13 @@ const response: InboxResponse = {
   ],
 }
 
-function mountView() {
+function mountView(props: { source?: 'Inbox' | 'Legacy' } = {}) {
   setActivePinia(createPinia())
-  return mount(InboxView, { global: { plugins: [PrimeVue] } })
+  return mount(InboxView, { props, global: { plugins: [PrimeVue] }, attachTo: document.body })
 }
+
+// Die Ansicht hört auf Tasten am window; ohne Unmount reagierten alte Instanzen mit.
+enableAutoUnmount(afterEach)
 
 describe('InboxView', () => {
   it('zeigt Jobs nach Ordner mit Status, Treffer und Begründung', async () => {
@@ -127,7 +130,7 @@ describe('InboxView', () => {
 
   it('kopiert den Fehlerbericht und prüft alle Problemfälle neu', async () => {
     const fetch = vi.fn(async (url: string, init?: RequestInit) =>
-      url === '/api/inbox/report'
+      url === '/api/inbox/report?source=Inbox'
         ? new Response('Tonregal Inbox – 2 Datei(en) mit Problemen')
         : init?.method === 'POST'
           ? new Response(JSON.stringify({ count: 2 }))
@@ -145,7 +148,54 @@ describe('InboxView', () => {
 
     await wrapper.find('[data-testid="retry-all"]').trigger('click')
     await flushPromises()
-    expect(fetch.mock.calls.map((c) => [c[0], c[1]?.method])).toContainEqual(['/api/inbox/retry-all', 'POST'])
-    wrapper.unmount()
+    expect(fetch.mock.calls.map((c) => [c[0], c[1]?.method])).toContainEqual(['/api/inbox/retry-all?source=Inbox', 'POST'])
+  })
+
+  it('arbeitet die Prüfliste per Tastatur ab', async () => {
+    const fetch = vi.fn(async (url: string, _init?: RequestInit) =>
+      url.endsWith('/select') || url.endsWith('/reject')
+        ? new Response(JSON.stringify(response.jobs[1]))
+        : url === '/api/inbox/import'
+          ? new Response(JSON.stringify(response.status), { status: 202 })
+          : new Response(JSON.stringify(response)),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    mountView()
+    await flushPromises()
+    const press = async (key: string) => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key }))
+      await flushPromises()
+    }
+    await press('j')
+    await press('j')
+    await press('Enter')
+    await press('k')
+    await press('x')
+
+    const posts = fetch.mock.calls.filter(([, init]) => init?.method === 'POST').map(([url]) => url)
+    expect(posts).toEqual(['/api/inbox/2/select', '/api/inbox/import', '/api/inbox/1/reject'])
+  })
+
+  it('zeigt den Stand des Altbestands und startet den Massenlauf', async () => {
+    const summary = { path: '/Volumes/T7/Musik/Altbestand', exists: true, total: 120, pending: 80, matched: 0, needsReview: 7, imported: 30, alreadyInLibrary: 3, rejected: 0 }
+    const fetch = vi.fn(async (url: string) =>
+      url === '/api/inbox/legacy'
+        ? new Response(JSON.stringify(summary))
+        : url === '/api/inbox/legacy/scan'
+          ? new Response(JSON.stringify(response.status), { status: 202 })
+          : new Response(JSON.stringify({ ...response, jobs: [] })),
+    )
+    vi.stubGlobal('fetch', fetch)
+
+    const wrapper = mountView({ source: 'Legacy' })
+    await flushPromises()
+    expect(wrapper.find('h1').text()).toBe('Altbestand')
+    expect(wrapper.find('[data-testid="legacy-summary"]').text()).toContain('120 Dateien eingelesen: 30 übernommen, 3 schon da, 7 zu prüfen, 80 offen')
+    await wrapper.find('button[data-testid="start-legacy"]').trigger('click')
+    await flushPromises()
+
+    expect(fetch.mock.calls.map(([url]) => url)).toContain('/api/inbox?source=Legacy')
+    expect(fetch).toHaveBeenCalledWith('/api/inbox/legacy/scan', expect.objectContaining({ method: 'POST' }))
   })
 })
