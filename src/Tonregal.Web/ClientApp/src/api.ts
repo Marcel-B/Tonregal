@@ -12,6 +12,34 @@ export interface LibraryStats {
   files: number
   openReviews: number
   openDuplicates: number
+  libraryBytes: number
+  analyzedFiles: number
+}
+
+export type BackupState = 'Running' | 'Succeeded' | 'Failed'
+
+export interface BackupRun {
+  id: number
+  startedAt: string
+  finishedAt: string | null
+  status: BackupState
+  filesSynced: number
+  bytesSynced: number
+  log: string | null
+}
+
+export interface BackupStatus {
+  running: boolean
+  step: string | null
+  lastRun: BackupRun | null
+  lastSuccessAt: string | null
+  consecutiveFailures: number
+  nextRunAt: string | null
+}
+
+export interface BackupResponse {
+  status: BackupStatus
+  runs: BackupRun[]
 }
 
 export type AlbumKind = 'Album' | 'Ep' | 'Single' | 'Compilation'
@@ -300,6 +328,8 @@ export const api = {
   fetchCover: (albumId: number) => request<void>('POST', `/library/albums/${albumId}/cover`),
   alignRelease: (albumId: number) => request<ReleaseAlignResult>('POST', `/library/albums/${albumId}/align-release`),
   audioUrl: (fileId: number) => `/api/library/files/${fileId}/audio`,
+  backup: () => get<BackupResponse>('/backup'),
+  runBackup: () => request<BackupStatus>('POST', '/backup/run'),
   analysis: () => get<AnalysisResponse>('/analysis'),
   startAnalysis: () => request<AnalysisStatus>('POST', '/analysis/start'),
   stopAnalysis: () => request<AnalysisStatus>('POST', '/analysis/stop'),
@@ -319,6 +349,17 @@ export const api = {
 export const audioExtensions = ['.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav']
 
 export const isAudioFile = (name: string) => audioExtensions.some((ext) => name.toLowerCase().endsWith(ext))
+
+export function formatBytes(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000
+    unit++
+  }
+  return `${value.toLocaleString('de-DE', { maximumFractionDigits: unit < 2 ? 0 : 1 })} ${units[unit]}`
+}
 
 export function formatDuration(ms: number): string {
   const seconds = Math.round(ms / 1000)

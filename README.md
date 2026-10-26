@@ -156,6 +156,24 @@ Vorhandene BPM- und Tonart-Tags bleiben stehen. Ohne Knopf läuft die Analyse nu
 kann einen Befehl nennen, der mit Exit-Code 0 einen laufenden KI-Job meldet, dann wartet sie. Auf der
 Seite *Analyse* startet und stoppt man sie von Hand und sieht den Fortschritt.
 
+**Backup:** Jede Nacht um 03:00 spiegelt `rclone sync` die Library nach `nextcloud:Musik/Library`
+(ohne `.trash` und andere Punkt-Dateien) und legt konsistente Kopien von `tonregal.db` und
+`navidrome.db` unter `nextcloud:Musik/_state/{Datum}/` ab; Stände älter als 7 Tage werden gelöscht.
+Würde rclone mehr als 500 Dateien in Nextcloud löschen (`Tonregal:Backup:MaxDelete`), bricht der Lauf
+ab – Schutz gegen eine leere oder falsch gemountete Library. Backup, Import und Analyse warten
+aufeinander, damit nie eine halb geschriebene Datei hochgeladen wird. Die Übersicht zeigt die letzten
+Läufe; zwei Fehlschläge in Folge werden rot markiert. *Jetzt sichern* oder `tonregal-backup-now` startet
+sofort einen Lauf.
+
+Einmalig einrichten (Zugang bleibt in `~/.config/rclone/rclone.conf`, nie im Repo): in Nextcloud einen
+App-Nutzer mit App-Passwort anlegen, der nur den Ordner `Musik` sieht, dann auf oi-o-mat
+
+```bash
+rclone config create nextcloud webdav vendor=nextcloud \
+  url=https://<nextcloud-host>/remote.php/dav/files/<nutzer>/ user=<nutzer> pass='<app-passwort>'
+rclone lsd nextcloud:Musik   # Test
+```
+
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf
 `/Volumes/T7/Musik/.tonregal-mount`), und starten nach einem Remount von selbst neu.
 

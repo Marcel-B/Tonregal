@@ -23,6 +23,7 @@ public sealed class LibraryAnalyzer(
     IReplayGainTagger replayGain,
     ITagReader tagReader,
     ITagWriter tagWriter,
+    LibraryWriteLock writeLock,
     IOptions<TonregalOptions> options,
     TimeProvider time,
     ILogger<LibraryAnalyzer> logger) : ILibraryAnalyzer
@@ -52,6 +53,7 @@ public sealed class LibraryAnalyzer(
             throw new LibraryUnavailableException($"Mount-Marker {options.Value.MountMarker} fehlt – ist die SSD gemountet?");
         if (await Pending.OrderBy(f => f.Track.AlbumId).Select(f => (int?)f.Track.AlbumId).FirstOrDefaultAsync(ct) is not { } albumId)
             return null;
+        using var _ = await writeLock.AcquireAsync("Analyse", ct);
 
         var files = await db.AudioFiles
             .Include(f => f.Track).ThenInclude(t => t.Album).ThenInclude(a => a.AlbumArtist)

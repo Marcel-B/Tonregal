@@ -39,7 +39,7 @@ public sealed class ApiTests : IDisposable
     {
         var stats = await _factory.CreateClient().GetFromJsonAsync<LibraryStats>("/api/stats", TestContext.Current.CancellationToken);
 
-        Assert.Equal(new LibraryStats(0, 0, 0, 0, 0, 0), stats);
+        Assert.Equal(new LibraryStats(0, 0, 0, 0, 0, 0, 0, 0), stats);
         Assert.True(File.Exists(Path.Combine(_library.MusicRoot, "app", "tonregal.db")));
     }
 }

@@ -40,7 +40,7 @@ tonregal-restart() {
   _tonregal_run "launchctl kickstart -k gui/\$(id -u)/$label"
 }
 
-# Backup-Endpunkt kommt mit Stufe 2 (Backup-Scheduler).
+# Startet sofort ein Backup nach Nextcloud (sonst nachts um 03:00).
 tonregal-backup-now() {
   _tonregal_run "curl -fsS -X POST http://\$(tailscale ip -4 | head -n1):5100/api/backup/run && echo"
 }

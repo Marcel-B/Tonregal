@@ -23,6 +23,7 @@ public sealed class LibraryImporter(
     ITagWriter tagWriter,
     IMetadataLookup lookup,
     ICoverArtSource covers,
+    LibraryWriteLock writeLock,
     IOptions<TonregalOptions> options,
     TimeProvider time,
     ILogger<LibraryImporter> logger) : ILibraryImporter
@@ -37,6 +38,7 @@ public sealed class LibraryImporter(
     {
         var job = await db.ImportJobs.FindAsync([jobId], ct)
             ?? throw new KeyNotFoundException($"Import-Job {jobId} gibt es nicht");
+        using var _ = await writeLock.AcquireAsync("Import", ct);
         try
         {
             await import(job, ct);

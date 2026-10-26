@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Infrastructure.Analysis;
+using Tonregal.Infrastructure.Backup;
 using Tonregal.Infrastructure.Duplicates;
 using Tonregal.Infrastructure.Fingerprinting;
 using Tonregal.Infrastructure.Library;
@@ -43,6 +44,9 @@ public static class DependencyInjection
         services.AddSingleton<IBpmKeyAnalyzer, LibrosaAnalyzer>();
         services.AddSingleton<IReplayGainTagger, RsgainTagger>();
         services.AddScoped<ILibraryAnalyzer, LibraryAnalyzer>();
+        services.Configure<BackupOptions>(configuration.GetSection(BackupOptions.SectionName));
+        services.AddSingleton<LibraryWriteLock>();
+        services.AddScoped<IBackupRunner, RcloneBackup>();
         return services;
     }
 
