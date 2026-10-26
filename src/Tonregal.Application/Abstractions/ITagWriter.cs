@@ -16,5 +16,5 @@ public interface ITagWriter
     /// andere (Nummern, Jahr, IDs, Cover) bleibt, wie es ist.
     /// </summary>
     /// <exception cref="InvalidDataException">Datei ist kein schreibbares Audioformat.</exception>
-    void WriteBasic(string path, string title, IReadOnlyList<string> artists, string album);
+    void WriteBasic(string path, string title, IReadOnlyList<string> artists, string albumArtist, string album);
 }

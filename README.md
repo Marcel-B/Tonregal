@@ -135,9 +135,10 @@ Tonregal liest dort nur und verändert nichts. Tags mit MusicBrainz-IDs gehen vo
 ist ein Ordner fertig abgeglichen, werden seine erkannten Dateien ohne Klick in die Library kopiert.
 Byte-gleiche Dateien, die schon in der Library liegen, werden übersprungen. Konflikte landen in der Prüfliste
 (neue Inbox-Dateien gehen immer vor). Dateien ohne passenden Treffer übernimmt der Ordner-Knopf in der Zeile
-mit Titel und Interpret aus Tags oder Dateiname ins Sammelalbum `{Interpret}/Unbekanntes Album`. Die
+(oder „Ohne Treffer übernehmen“ für den ganzen Ordner) mit Titel, Interpret und Album aus den Tags; ohne
+Album-Tag landen sie im Sammelalbum `{Interpret}/Unbekanntes Album`. Die
 Prüflisten von Inbox und Altbestand lassen sich per Tastatur abarbeiten: `j`/`k` Zeile, `Enter` übernehmen,
-`l` Kandidaten, `u` Sammelalbum, `r` neu abgleichen, `x` verwerfen.
+`l` Kandidaten, `u` ohne Treffer, `r` neu abgleichen, `x` verwerfen.
 
 **Dubletten:** Nach jedem Library-Scan sucht Tonregal Dateien mit gleichem Hash, gleicher Aufnahme
 (MusicBrainz-Recording-ID oder AcoustID) oder gleichem Interpret, Titel und Dauer (±2 s). MP3 und FLAC

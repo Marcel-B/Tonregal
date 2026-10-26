@@ -95,14 +95,23 @@ public sealed class LibraryImporter(
         var tags = InboxImporter.WithFileName(tagReader.Read(source).Tags, source);
         var title = tags.Title ?? Path.GetFileNameWithoutExtension(source);
         IReadOnlyList<string> artists = tags.Artists.Count > 0 ? tags.Artists
-            : tags.AlbumArtist is { } albumArtist ? [albumArtist]
+            : tags.AlbumArtist is { } tagged ? [tagged]
             : [LibraryScanner.UnknownArtist];
-        var folder = LibraryPathRule.AlbumFolder(artists[0], null, LibraryScanner.UnknownAlbum, AlbumKind.Album);
-        var relative = Path.Combine(folder, LibraryPathRule.Sanitize(title) + Path.GetExtension(source).ToLowerInvariant());
+        // Ein Album aus den Tags bleibt erhalten (samt Jahr und Tracknummer), sonst das Sammelalbum.
+        var album = string.IsNullOrWhiteSpace(tags.Album) ? null : tags.Album.Trim();
+        var albumArtist = album is not null && !string.IsNullOrWhiteSpace(tags.AlbumArtist) ? tags.AlbumArtist.Trim() : artists[0];
+        var kind = album is not null && tags.IsCompilation ? AlbumKind.Compilation : AlbumKind.Album;
+        var folder = album is null
+            ? LibraryPathRule.AlbumFolder(albumArtist, null, LibraryScanner.UnknownAlbum, AlbumKind.Album)
+            : LibraryPathRule.AlbumFolder(albumArtist, tags.Year, album, kind);
+        var fileName = album is not null && tags.Track is > 0 and var number
+            ? LibraryPathRule.FileName(tags.Disc ?? 1, tags.DiscCount ?? 1, number, title, Path.GetExtension(source))
+            : LibraryPathRule.Sanitize(title) + Path.GetExtension(source).ToLowerInvariant();
+        var relative = Path.Combine(folder, fileName);
 
         Place(job, source, relative, temp =>
         {
-            tagWriter.WriteBasic(temp, title, artists, LibraryScanner.UnknownAlbum);
+            tagWriter.WriteBasic(temp, title, artists, albumArtist, album ?? LibraryScanner.UnknownAlbum);
             if (tagReader.Read(temp).Tags.Title != title)
                 throw new InvalidDataException($"Tags ließen sich nicht korrekt schreiben: {Path.GetFileName(source)}");
         });
