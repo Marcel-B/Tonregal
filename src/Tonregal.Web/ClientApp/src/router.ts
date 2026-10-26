@@ -14,6 +14,7 @@ export const routes = [
     props: { source: 'Legacy' },
     meta: { title: 'Altbestand', icon: 'pi pi-history' },
   },
+  { path: '/analysis', name: 'analysis', component: () => import('./views/AnalysisView.vue'), meta: { title: 'Analyse', icon: 'pi pi-sliders-h' } },
   { path: '/duplicates', name: 'duplicates', component: () => import('./views/DuplicatesView.vue'), meta: { title: 'Dubletten', icon: 'pi pi-clone' } },
 ]
 

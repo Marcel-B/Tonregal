@@ -148,6 +148,14 @@ Rest wandert nach `Library/.trash/{Datum}/` und wird nach 30 Tagen gelöscht. Ei
 byte-gleich schon in der Library liegt, geht direkt in den Papierkorb; ist nur der Zielplatz belegt,
 landet sie als `… (2)` daneben und erscheint als Dublette.
 
+**Analyse:** Ein Hintergrunddienst arbeitet die Library albumweise ab: BPM und Tonart je Datei mit
+librosa (`src/Tonregal.Web/analysis/analyze.py`, Python-venv unter `Musik/tools/analysis-venv`, legt das
+Deploy-Script an), danach Track- und Album-Gain mit `rsgain` (Homebrew), alles direkt in die Tags.
+Vorhandene BPM- und Tonart-Tags bleiben stehen. Ohne Knopf läuft die Analyse nur nachts
+(`Tonregal:Analysis:NightStart`/`NightEnd`, Standard 01:00–06:00); `Tonregal:Analysis:BusyCommand`
+kann einen Befehl nennen, der mit Exit-Code 0 einen laufenden KI-Job meldet, dann wartet sie. Auf der
+Seite *Analyse* startet und stoppt man sie von Hand und sieht den Fortschritt.
+
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf
 `/Volumes/T7/Musik/.tonregal-mount`), und starten nach einem Remount von selbst neu.
 

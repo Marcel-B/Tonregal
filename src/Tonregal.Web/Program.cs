@@ -6,6 +6,7 @@ using Serilog;
 using Tonregal.Application;
 using Tonregal.Infrastructure;
 using Tonregal.Infrastructure.Persistence;
+using Tonregal.Web.Analysis;
 using Tonregal.Web.Api;
 using Tonregal.Web.Hubs;
 using Tonregal.Web.Inbox;
@@ -31,6 +32,8 @@ builder.Services.AddSingleton<LibraryScanService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LibraryScanService>());
 builder.Services.AddSingleton<InboxService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<InboxService>());
+builder.Services.AddSingleton<AnalysisService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AnalysisService>());
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
@@ -60,7 +63,7 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi();
+app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi();
 app.MapHub<StatusHub>("/hub");
 app.MapFallbackToFile("index.html");
 

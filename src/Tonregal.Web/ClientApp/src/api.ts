@@ -218,6 +218,36 @@ export interface DuplicateGroup {
   files: DuplicateFile[]
 }
 
+export interface AnalysisCounts {
+  files: number
+  analyzed: number
+  pending: number
+  withoutResult: number
+}
+
+export interface AnalysisStatus {
+  running: boolean
+  requested: boolean
+  currentAlbum: string | null
+  counts: AnalysisCounts | null
+  waiting: string | null
+  lastRunAt: string | null
+  lastError: string | null
+  recentErrors: string[]
+}
+
+export interface AnalysisSettings {
+  runAtNight: boolean
+  nightStart: string
+  nightEnd: string
+  busyCheck: boolean
+}
+
+export interface AnalysisResponse {
+  status: AnalysisStatus
+  settings: AnalysisSettings
+}
+
 export interface ToolStatus {
   fpcalc: string | null
   acoustIdConfigured: boolean
@@ -270,6 +300,9 @@ export const api = {
   fetchCover: (albumId: number) => request<void>('POST', `/library/albums/${albumId}/cover`),
   alignRelease: (albumId: number) => request<ReleaseAlignResult>('POST', `/library/albums/${albumId}/align-release`),
   audioUrl: (fileId: number) => `/api/library/files/${fileId}/audio`,
+  analysis: () => get<AnalysisResponse>('/analysis'),
+  startAnalysis: () => request<AnalysisStatus>('POST', '/analysis/start'),
+  stopAnalysis: () => request<AnalysisStatus>('POST', '/analysis/stop'),
   duplicates: () => get<DuplicateGroup[]>('/duplicates'),
   scanDuplicates: () => request<ScanStatus>('POST', '/duplicates/scan'),
   resolveDuplicate: (groupId: number, keepFileIds: number[]) => request<void>('POST', `/duplicates/${groupId}/resolve`, { keepFileIds }),

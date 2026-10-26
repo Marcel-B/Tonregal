@@ -16,7 +16,16 @@ staging="$(mktemp -d)"
 trap 'rm -rf "$staging"' EXIT
 
 echo "==> Homebrew-Pakete"
-brew list chromaprint >/dev/null 2>&1 || brew install chromaprint
+for package in chromaprint rsgain uv; do
+  brew list "$package" >/dev/null 2>&1 || brew install "$package"
+done
+
+# Analyse-venv (librosa) samt Python und uv-Cache auf der T7, nicht auf der internen SSD.
+echo "==> Analyse-venv"
+tools="$MUSIC_ROOT/tools"
+export UV_CACHE_DIR="$tools/uv-cache" UV_PYTHON_INSTALL_DIR="$tools/uv-python"
+[[ -x "$tools/analysis-venv/bin/python" ]] || uv venv --python 3.12 "$tools/analysis-venv"
+uv pip install --python "$tools/analysis-venv/bin/python" -q -r "$repo/src/Tonregal.Web/analysis/requirements.txt"
 
 echo "==> dotnet publish"
 dotnet publish "$repo/src/Tonregal.Web" -c Release -r osx-arm64 --self-contained -o "$staging"

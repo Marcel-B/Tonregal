@@ -248,7 +248,7 @@ public sealed class LibraryScanner(
     private static string DefaultSortName(string name) =>
         name.StartsWith("The ", StringComparison.OrdinalIgnoreCase) && name.Length > 4 ? $"{name[4..]}, {name[..3]}" : name;
 
-    private static async Task<string> HashAsync(string path, CancellationToken ct)
+    internal static async Task<string> HashAsync(string path, CancellationToken ct)
     {
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, useAsync: true);
         return Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, ct));
