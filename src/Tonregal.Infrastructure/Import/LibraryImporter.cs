@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
+using Tonregal.Infrastructure.Library;
 using Tonregal.Infrastructure.Persistence;
 using LibraryPathRule = Tonregal.Domain.ValueObjects.LibraryPath;
 
@@ -28,13 +29,17 @@ public sealed class LibraryImporter(
 {
     private const string TempPrefix = ".tonregal-";
 
-    public async Task<ImportJob> ImportAsync(int jobId, CancellationToken ct)
+    public Task<ImportJob> ImportAsync(int jobId, CancellationToken ct) => RunAsync(jobId, ImportAsync, ct);
+
+    public Task<ImportJob> ImportUnmatchedAsync(int jobId, CancellationToken ct) => RunAsync(jobId, ImportUnmatchedAsync, ct);
+
+    private async Task<ImportJob> RunAsync(int jobId, Func<ImportJob, CancellationToken, Task> import, CancellationToken ct)
     {
         var job = await db.ImportJobs.FindAsync([jobId], ct)
             ?? throw new KeyNotFoundException($"Import-Job {jobId} gibt es nicht");
         try
         {
-            await ImportAsync(job, ct);
+            await import(job, ct);
             job.Error = null;
         }
         catch (Exception e) when (e is InvalidOperationException or InvalidDataException or IOException
@@ -53,15 +58,7 @@ public sealed class LibraryImporter(
         if (job.State != ImportState.Matched || job.SelectedRecordingId is not { } recordingId || job.SelectedReleaseId is not { } releaseId)
             throw new InvalidOperationException("Nur erkannte Dateien mit gewähltem Release lassen sich übernehmen");
 
-        var o = options.Value;
-        if (!File.Exists(o.MountMarker))
-            throw new IOException($"Mount-Marker {o.MountMarker} fehlt – ist die SSD gemountet?");
-        var inboxRoot = Path.GetFullPath(o.Inbox);
-        var libraryRoot = Path.GetFullPath(o.Library);
-        var source = Path.Combine(inboxRoot, job.SourcePath);
-        if (!File.Exists(source))
-            throw new IOException(ImportJob.VanishedReason);
-
+        var source = Source(job);
         var track = await lookup.GetReleaseTrackAsync(releaseId, recordingId, ct)
             ?? throw new InvalidOperationException("Die Aufnahme steht bei MusicBrainz nicht (mehr) auf diesem Release");
         if (await SiblingReleaseAsync(job, track, ct) is { } sibling)
@@ -77,6 +74,60 @@ public sealed class LibraryImporter(
         var relative = LibraryPathRule.For(
             track.AlbumArtist, track.Year, track.Album, track.Kind,
             track.Disc, track.DiscCount, track.Track, track.Title, Path.GetExtension(source));
+        var albumFolder = Path.GetDirectoryName(Path.Combine(Path.GetFullPath(options.Value.Library), relative))!;
+        Directory.CreateDirectory(albumFolder);
+        var cover = await CoverAsync(source, albumFolder, releaseId, track.ReleaseGroupId, ct);
+
+        Place(job, source, relative, temp =>
+        {
+            tagWriter.Write(temp, track, cover);
+            Verify(temp, track);
+        });
+        job.SelectedReleaseId = releaseId;
+    }
+
+    private Task ImportUnmatchedAsync(ImportJob job, CancellationToken ct)
+    {
+        if (job.State is not (ImportState.NeedsReview or ImportState.Matched))
+            throw new InvalidOperationException("Nur zu prüfende Dateien lassen sich ohne Treffer übernehmen");
+
+        var source = Source(job);
+        var tags = InboxImporter.WithFileName(tagReader.Read(source).Tags, source);
+        var title = tags.Title ?? Path.GetFileNameWithoutExtension(source);
+        IReadOnlyList<string> artists = tags.Artists.Count > 0 ? tags.Artists
+            : tags.AlbumArtist is { } albumArtist ? [albumArtist]
+            : [LibraryScanner.UnknownArtist];
+        var folder = LibraryPathRule.AlbumFolder(artists[0], null, LibraryScanner.UnknownAlbum, AlbumKind.Album);
+        var relative = Path.Combine(folder, LibraryPathRule.Sanitize(title) + Path.GetExtension(source).ToLowerInvariant());
+
+        Place(job, source, relative, temp =>
+        {
+            tagWriter.WriteBasic(temp, title, artists, LibraryScanner.UnknownAlbum);
+            if (tagReader.Read(temp).Tags.Title != title)
+                throw new InvalidDataException($"Tags ließen sich nicht korrekt schreiben: {Path.GetFileName(source)}");
+        });
+        job.SelectedRecordingId = null;
+        job.SelectedReleaseId = null;
+        return Task.CompletedTask;
+    }
+
+    private string Source(ImportJob job)
+    {
+        var o = options.Value;
+        if (!File.Exists(o.MountMarker))
+            throw new IOException($"Mount-Marker {o.MountMarker} fehlt – ist die SSD gemountet?");
+        var source = Path.Combine(Path.GetFullPath(o.SourceRoot(job.Source)), job.SourcePath);
+        return File.Exists(source) ? source : throw new IOException(ImportJob.VanishedReason);
+    }
+
+    /// <summary>
+    /// Tags in eine Kopie schreiben und prüfen, die Kopie atomar an ihren Platz in der Library legen,
+    /// erst dann das Original aus der Inbox löschen. Der Altbestand bleibt, wie er ist.
+    /// </summary>
+    private void Place(ImportJob job, string source, string relative, Action<string> write)
+    {
+        var inboxRoot = Path.GetFullPath(options.Value.Inbox);
+        var libraryRoot = Path.GetFullPath(options.Value.Library);
         var target = Path.Combine(libraryRoot, relative);
         var albumFolder = Path.GetDirectoryName(target)!;
         // Belegter Platz: daneben ablegen, die Dublettenerkennung zeigt danach beide zur Entscheidung.
@@ -85,14 +136,11 @@ public sealed class LibraryImporter(
         var libraryRelative = Path.GetRelativePath(libraryRoot, target).Replace(Path.DirectorySeparatorChar, '/');
 
         Directory.CreateDirectory(albumFolder);
-        var cover = await CoverAsync(source, albumFolder, releaseId, track.ReleaseGroupId, ct);
-
         var temp = Path.Combine(albumFolder, $"{TempPrefix}{Guid.NewGuid():N}{Path.GetExtension(source)}");
         try
         {
             File.Copy(source, temp);
-            tagWriter.Write(temp, track, cover);
-            Verify(temp, track);
+            write(temp);
             File.Move(temp, target, overwrite: false);
         }
         finally
@@ -101,11 +149,13 @@ public sealed class LibraryImporter(
                 File.Delete(temp);
         }
 
-        File.Delete(source);
-        RemoveEmptyFolders(Path.GetDirectoryName(source)!, inboxRoot);
+        if (job.Source == FileSource.Inbox)
+        {
+            File.Delete(source);
+            RemoveEmptyFolders(Path.GetDirectoryName(source)!, inboxRoot);
+        }
 
         job.State = ImportState.Imported;
-        job.SelectedReleaseId = releaseId;
         job.LibraryPath = libraryRelative;
         job.FinishedAt = time.GetUtcNow();
         logger.LogInformation("Übernommen: {Source} → {Target}", job.SourcePath, libraryRelative);
@@ -125,7 +175,7 @@ public sealed class LibraryImporter(
         var fromFolder = group.Length == 0
             ? []
             : (await db.ImportJobs
-                    .Where(j => j.Id != job.Id && j.State == ImportState.Imported && j.SourcePath.StartsWith(group + "/"))
+                    .Where(j => j.Id != job.Id && j.Source == job.Source && j.State == ImportState.Imported && j.SourcePath.StartsWith(group + "/"))
                     .ToListAsync(ct))
                 .Where(j => j.Group == group)
                 .Select(j => j.SelectedReleaseId).OfType<Guid>()

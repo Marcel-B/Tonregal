@@ -16,7 +16,14 @@ public interface IInboxImporter
     /// <exception cref="LibraryUnavailableException">Mount-Marker fehlt.</exception>
     Task<InboxSyncResult> SyncAsync(CancellationToken ct);
 
-    /// <summary>Verarbeitet den ältesten offenen Job; <c>null</c>, wenn keiner wartet.</summary>
+    /// <summary>
+    /// Legt für Dateien im Altbestand-Ordner Jobs an, die noch keinen haben (oder sich geändert
+    /// haben). Der Altbestand wird nur gelesen, nie verändert.
+    /// </summary>
+    /// <exception cref="LibraryUnavailableException">Mount-Marker fehlt.</exception>
+    Task<InboxSyncResult> SyncLegacyAsync(CancellationToken ct);
+
+    /// <summary>Verarbeitet den ältesten offenen Job, Inbox vor Altbestand; <c>null</c>, wenn keiner wartet.</summary>
     /// <exception cref="ExternalToolUnavailableException">fpcalc oder AcoustID nicht verfügbar; der Job bleibt offen.</exception>
     Task<ImportJob?> ProcessNextAsync(CancellationToken ct);
 }

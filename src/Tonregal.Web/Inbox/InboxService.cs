@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
+using Microsoft.EntityFrameworkCore;
 using Tonregal.Domain.Entities;
+using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Hubs;
 using Tonregal.Web.Library;
 
@@ -36,6 +38,7 @@ public sealed class InboxService(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
 
     private readonly ConcurrentQueue<int> _imports = new();
+    private int _legacyRequested;
     private volatile InboxStatus _status = new(false, null, 0, 0, 0, 0, null, null);
     private FileSystemWatcher? _watcher;
 
@@ -43,6 +46,13 @@ public sealed class InboxService(
 
     /// <summary>Fordert einen Durchlauf an; läuft bereits einer, folgt höchstens ein weiterer.</summary>
     public void RequestRun() => _requests.Writer.TryWrite(true);
+
+    /// <summary>Liest beim nächsten Durchlauf auch den Altbestand-Ordner ein (Massenlauf).</summary>
+    public void RequestLegacyRun()
+    {
+        Interlocked.Exchange(ref _legacyRequested, 1);
+        RequestRun();
+    }
 
     /// <summary>Stellt Jobs zur Übernahme in die Library an; sie laufen im nächsten Durchlauf.</summary>
     public InboxStatus EnqueueImports(IEnumerable<int> jobIds)
@@ -79,6 +89,7 @@ public sealed class InboxService(
         var processed = 0;
         var waiting = 0;
         var imported = 0;
+        var legacyImported = 0;
         try
         {
             EnsureWatcher();
@@ -86,6 +97,11 @@ public sealed class InboxService(
             await using (var scope = scopes.CreateAsyncScope())
                 sync = await scope.ServiceProvider.GetRequiredService<IInboxImporter>().SyncAsync(ct);
             waiting = sync.Waiting;
+            if (Interlocked.Exchange(ref _legacyRequested, 0) == 1)
+            {
+                await using var scope = scopes.CreateAsyncScope();
+                await scope.ServiceProvider.GetRequiredService<IInboxImporter>().SyncLegacyAsync(ct);
+            }
 
             // Dateien, die noch kopiert werden, nach der Ruhephase erneut ansehen.
             if (sync.Waiting > 0)
@@ -103,7 +119,13 @@ public sealed class InboxService(
                     break;
                 processed++;
                 await PublishAsync(_status with { CurrentPath = job.SourcePath, Processed = processed, Waiting = sync.Waiting }, ct);
+                if (job.Source == FileSource.Legacy)
+                    legacyImported += await ImportLegacyGroupAsync(job.Group, ct);
             }
+
+            imported += legacyImported;
+            if (legacyImported > 0)
+                libraryScan.RequestScan();
 
             await PublishAsync(new InboxStatus(false, null, processed, sync.Waiting, imported, _imports.Count, time.GetUtcNow(), null), ct);
         }
@@ -135,6 +157,39 @@ public sealed class InboxService(
 
         if (imported > 0)
             libraryScan.RequestScan();
+        return imported;
+    }
+
+    /// <summary>
+    /// Massenlauf: Ist ein Altbestand-Ordner fertig abgeglichen, wandern seine erkannten Dateien ohne
+    /// Klick in die Library (als Kopie). Erst dann, damit die Album-Erkennung alle Dateien gesehen hat.
+    /// </summary>
+    private async Task<int> ImportLegacyGroupAsync(string group, CancellationToken ct)
+    {
+        List<int> ids;
+        await using (var scope = scopes.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TonregalDbContext>();
+            var jobs = (await db.ImportJobs.AsNoTracking()
+                    .Where(j => j.Source == FileSource.Legacy && ImportJob.ActiveStates.Contains(j.State)
+                        && (group.Length == 0 || j.SourcePath.StartsWith(group + "/")))
+                    .ToListAsync(ct))
+                .Where(j => j.Group == group)
+                .ToList();
+            if (group.Length > 0 && jobs.Any(j => j.State is ImportState.New or ImportState.Fingerprinted))
+                return 0;
+            ids = jobs.Where(j => j.State == ImportState.Matched && j.SelectedReleaseId != null).Select(j => j.Id).ToList();
+        }
+
+        var imported = 0;
+        foreach (var id in ids)
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var job = await scope.ServiceProvider.GetRequiredService<ILibraryImporter>().ImportAsync(id, ct);
+            if (job.State == ImportState.Imported)
+                imported++;
+        }
+
         return imported;
     }
 
