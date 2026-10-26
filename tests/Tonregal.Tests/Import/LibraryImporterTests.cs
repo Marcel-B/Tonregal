@@ -211,10 +211,14 @@ public sealed class LibraryImporterTests : IDisposable
     {
         var target = Path.Combine(Inbox, "Garbage");
         _library.Copy("song1.mp3", target, "Garbage - Subhuman.mp3");
-        new TagLibTagWriter().WriteBasic(Path.Combine(target, "Garbage - Subhuman.mp3"), "Titel 3", ["Garbage"], "Non-Album-Song");
-        var job = new ImportJob { SourcePath = "Garbage/Garbage - Subhuman.mp3", State = ImportState.NeedsReview };
-        _db.ImportJobs.Add(job);
-        await _db.SaveChangesAsync(Ct);
+        var path = Path.Combine(target, "Garbage - Subhuman.mp3");
+        new TagLibTagWriter().WriteBasic(path, "Titel 3", ["Garbage"], "Garbage", "egal");
+        using (var file = TagLib.File.Create(path))
+        {
+            file.Tag.Album = null;
+            file.Save();
+        }
+        var job = await UnmatchedJobAsync("Garbage/Garbage - Subhuman.mp3");
 
         var result = await Importer().ImportUnmatchedAsync(job.Id, Ct);
 
@@ -223,6 +227,36 @@ public sealed class LibraryImporterTests : IDisposable
         var tags = _reader.Read(Path.Combine(_library.Library, result.LibraryPath!)).Tags;
         Assert.Equal(("Subhuman", "Garbage", "Unbekanntes Album"), (tags.Title, tags.AlbumArtist, tags.Album));
         Assert.False(Directory.Exists(target));
+    }
+
+    [Fact]
+    public async Task Ohne_Treffer_behaelt_das_Album_aus_den_Tags()
+    {
+        var target = Path.Combine(Inbox, "Meret");
+        _library.Copy("song1.mp3", target, "07.mp3");
+        var path = Path.Combine(target, "07.mp3");
+        new TagLibTagWriter().WriteBasic(path, "La Foule", ["Meret Becker & Ars Vitalis"], "Meret Becker & Ars Vitalis", "1993-'95");
+        using (var file = TagLib.File.Create(path))
+        {
+            (file.Tag.Year, file.Tag.Track, file.Tag.Disc, file.Tag.DiscCount) = (1995, 7, 1, 1);
+            file.Save();
+        }
+        var job = await UnmatchedJobAsync("Meret/07.mp3");
+
+        var result = await Importer().ImportUnmatchedAsync(job.Id, Ct);
+
+        Assert.Null(result.Error);
+        Assert.Equal("Meret Becker & Ars Vitalis/1995 - 1993-'95/07 - La Foule.mp3", result.LibraryPath);
+        var tags = _reader.Read(Path.Combine(_library.Library, result.LibraryPath!)).Tags;
+        Assert.Equal(("La Foule", "Meret Becker & Ars Vitalis", "1993-'95", 7), (tags.Title, tags.AlbumArtist, tags.Album, tags.Track));
+    }
+
+    private async Task<ImportJob> UnmatchedJobAsync(string sourcePath)
+    {
+        var job = new ImportJob { SourcePath = sourcePath, State = ImportState.NeedsReview };
+        _db.ImportJobs.Add(job);
+        await _db.SaveChangesAsync(Ct);
+        return job;
     }
 
     private sealed class FakeLookup(Func<Guid, ReleaseTrack?> track) : IMetadataLookup

@@ -136,8 +136,13 @@ const accept = (job: ImportJob) =>
     await api.selectCandidate(job.id, job.selected!.recordingId, job.selected!.releaseId!)
     status.inbox = await api.importJobs([job.id])
   })
-// Kein Treffer passt: mit Titel und Interpret aus Tags oder Dateiname ins Sammelalbum.
+// Kein Treffer passt: mit Titel, Interpret und Album aus den Tags übernehmen, ohne Album ins Sammelalbum.
 const importUnmatched = (job: ImportJob) => run(() => api.importUnmatched(job.id))
+const unmatched = (group: string) => jobs.value.filter((j) => j.state === 'NeedsReview' && !j.selected && j.group === group)
+const importGroupUnmatched = (group: string) =>
+  run(async () => {
+    for (const job of unmatched(group)) await api.importUnmatched(job.id)
+  })
 const startLegacy = () => run(() => api.scanLegacy())
 const reject = (job: ImportJob) => run(() => api.rejectImport(job.id))
 
@@ -187,7 +192,7 @@ async function showCandidates(job: ImportJob) {
 }
 
 // Tastenkürzel für lange Prüflisten: j/k oder Pfeile wählen eine Zeile, dann
-// Enter übernehmen, l Kandidaten, u Sammelalbum, r erneut abgleichen, x verwerfen.
+// Enter übernehmen, l Kandidaten, u ohne Treffer, r erneut abgleichen, x verwerfen.
 const focusedId = ref<number | null>(null)
 const focused = computed(() => visibleJobs.value.find((j) => j.id === focusedId.value) ?? null)
 function move(step: number) {
@@ -310,7 +315,7 @@ async function select(candidate: RecordingCandidate) {
     <div class="flex flex-wrap items-center gap-4 mb-4">
       <SelectButton v-model="filter" :options="filterOptions" option-label="label" option-value="value" :allow-empty="false" />
       <span class="text-xs text-surface-500" data-testid="shortcuts">
-        Tasten: <kbd>j</kbd>/<kbd>k</kbd> Zeile · <kbd>Enter</kbd> übernehmen · <kbd>l</kbd> Kandidaten · <kbd>u</kbd> Sammelalbum ·
+        Tasten: <kbd>j</kbd>/<kbd>k</kbd> Zeile · <kbd>Enter</kbd> übernehmen · <kbd>l</kbd> Kandidaten · <kbd>u</kbd> ohne Treffer ·
         <kbd>r</kbd> neu abgleichen · <kbd>x</kbd> verwerfen
       </span>
     </div>
@@ -334,6 +339,17 @@ async function select(candidate: RecordingCandidate) {
             text
             data-testid="import-group"
             @click="importJobs(matched(data.group))"
+          />
+          <Button
+            v-if="unmatched(data.group).length"
+            :label="`Ohne Treffer übernehmen (${unmatched(data.group).length})`"
+            icon="pi pi-folder-open"
+            size="small"
+            text
+            severity="secondary"
+            title="Dateien ohne Vorschlag mit Titel, Interpret und Album aus den Tags übernehmen"
+            data-testid="import-group-unmatched"
+            @click="importGroupUnmatched(data.group)"
           />
         </div>
       </template>
@@ -400,8 +416,8 @@ async function select(candidate: RecordingCandidate) {
               rounded
               size="small"
               severity="secondary"
-              aria-label="Ohne Treffer ins Sammelalbum übernehmen"
-              title="Ohne Treffer ins Sammelalbum „Unbekanntes Album“ übernehmen (u)"
+              aria-label="Ohne Treffer übernehmen"
+              title="Ohne Treffer übernehmen: Album aus den Tags, sonst „Unbekanntes Album“ (u)"
               data-testid="import-unmatched"
               @click="importUnmatched(data)"
             />

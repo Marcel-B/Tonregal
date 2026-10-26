@@ -92,6 +92,26 @@ describe('InboxView', () => {
     expect(JSON.parse(call![1]!.body as string)).toEqual({ jobIds: [1] })
   })
 
+  it('übernimmt alle Dateien ohne Vorschlag eines Ordners', async () => {
+    const unknown = (id: number) =>
+      job(id, `Meret/0${id}.mp3`, 'NeedsReview', { reviewReason: 'AcoustID kennt diese Aufnahme nicht' })
+    const jobs = [unknown(4), unknown(5), response.jobs[1]]
+    const fetch = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ ...response, jobs })))
+    vi.stubGlobal('fetch', fetch)
+
+    const wrapper = mountView()
+    await flushPromises()
+    const button = wrapper.find('[data-testid="import-group-unmatched"]')
+    expect(button.text()).toBe('Ohne Treffer übernehmen (2)')
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST').map(([url]) => url)).toEqual([
+      '/api/inbox/4/import-unmatched',
+      '/api/inbox/5/import-unmatched',
+    ])
+  })
+
   it('übernimmt einen Vorschlag aus dem Review', async () => {
     const fetch = vi.fn(async (url: string, init?: RequestInit) =>
       url === '/api/inbox/2/select'
