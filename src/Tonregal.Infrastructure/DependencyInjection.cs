@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IInboxImporter, InboxImporter>();
         services.AddScoped<ILibraryImporter, LibraryImporter>();
         services.AddScoped<IDuplicateService, DuplicateService>();
+        services.AddScoped<IReleaseAligner, ReleaseAligner>();
         services.AddMetadataServices(configuration);
         return services;
     }

@@ -229,6 +229,9 @@ public sealed partial class InboxImporter(
             try
             {
                 found = await lookup.SearchByTagsAsync(artist, title, tags.Album, job.DurationMs, ct);
+                // „White Russians (Demo)“: Zusätze in Klammern stehen bei MusicBrainz oft nicht im Titel.
+                if (found.Count == 0 && Brackets().Replace(title, "").Trim() is { Length: > 0 } plain && plain != title.Trim())
+                    found = await lookup.SearchByTagsAsync(artist, plain, tags.Album, job.DurationMs, ct);
             }
             catch (ExternalToolUnavailableException e)
             {
@@ -236,15 +239,23 @@ public sealed partial class InboxImporter(
             }
         }
 
-        var selected = found.FirstOrDefault(c => MatchesTags(c, tags)
-                && (job.DurationMs <= 0 || c.DurationMs is not { } length || Math.Abs(length - job.DurationMs) <= DurationTolerance.TotalMilliseconds))
-            ?? found.FirstOrDefault(c => MatchesTags(c, tags));
+        // Ohne Fingerprint muss wenigstens die Länge stimmen; Treffer ohne Länge zählen nur, wenn
+        // MusicBrainz für keinen Treffer eine Länge kennt. Das Album aus den Tags geht vor.
+        var matching = found.Where(c => MatchesTags(c, tags)).ToList();
+        var anyLength = matching.Any(c => c.DurationMs is not null);
+        bool Fits(RecordingCandidate c) => job.DurationMs <= 0
+            || (c.DurationMs is { } length ? Math.Abs(length - job.DurationMs) <= DurationTolerance.TotalMilliseconds : !anyLength);
+        var fitting = matching.Where(Fits).ToList();
+        var selected = fitting.FirstOrDefault(c => tags.Album is { } album && c.ReleaseTitle is { } release && SameTitle(album, release))
+            ?? fitting.FirstOrDefault();
         job.Candidates = JsonSerializer.Serialize(found, Json);
         job.MatchScore = null;
         job.SelectedRecordingId = selected?.RecordingId;
         job.SelectedReleaseId = selected?.ReleaseId;
         job.State = ImportState.NeedsReview;
-        job.ReviewReason = selected is null ? reason : $"{reason}; Vorschlag nur über die Tags gefunden";
+        job.ReviewReason = selected is not null ? $"{reason}; Vorschlag nur über die Tags gefunden"
+            : matching.Count > 0 ? $"{reason}; Dauer {FormatDuration(job.DurationMs)} passt zu keinem Treffer über die Tags"
+            : reason;
         if (selected is not null)
             job.Error = null;
         await db.SaveChangesAsync(ct);
@@ -487,6 +498,9 @@ public sealed partial class InboxImporter(
     [GeneratedRegex(@"\s+-\s+")]
     private static partial Regex Separator();
 
+    [GeneratedRegex(@"\s*[(\[][^)\]]*[)\]]")]
+    private static partial Regex Brackets();
+
     /// <summary>Levenshtein-Distanz, abgebrochen sobald sie <paramref name="limit"/> überschreitet.</summary>
     internal static int EditDistance(string a, string b, int limit)
     {
@@ -512,7 +526,8 @@ public sealed partial class InboxImporter(
         return previous[b.Length];
     }
 
-    [GeneratedRegex(@"^(track|titel|title|piste|pista|spur|audio ?track|unbekannt|unknown)?[\s_-]*\d{1,3}$", RegexOptions.IgnoreCase)]
+    /// <summary>„Titel 12“, „Track 03“, „07“, „Vts 03 1“ (DVD-Rip).</summary>
+    [GeneratedRegex(@"^((track|titel|title|piste|pista|spur|audio ?track|kapitel|chapter|unbekannt|unknown)?[\s_-]*\d{1,3}|vts[\s_-]*\d{1,2}([\s_-]+\d{1,2})?)$", RegexOptions.IgnoreCase)]
     private static partial Regex PlaceholderTitle();
 
     /// <summary>„Lookin'“ → „Looking“.</summary>

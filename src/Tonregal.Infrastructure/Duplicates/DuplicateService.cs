@@ -214,7 +214,7 @@ public sealed class DuplicateService(
     /// Ist im Albumordner keine Audiodatei mehr, wandert der Rest (cover.jpg) mit in den Papierkorb
     /// und der Ordner verschwindet, ebenso ein danach leerer Artist-Ordner.
     /// </summary>
-    private static void RemoveEmptyAlbumFolder(string folder, string root, string trash, DateTimeOffset now)
+    internal static void RemoveEmptyAlbumFolder(string folder, string root, string trash, DateTimeOffset now)
     {
         while (folder.Length > root.Length && folder.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
         {

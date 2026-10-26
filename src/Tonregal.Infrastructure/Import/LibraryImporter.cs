@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tonregal.Application;
@@ -63,6 +64,14 @@ public sealed class LibraryImporter(
 
         var track = await lookup.GetReleaseTrackAsync(releaseId, recordingId, ct)
             ?? throw new InvalidOperationException("Die Aufnahme steht bei MusicBrainz nicht (mehr) auf diesem Release");
+        if (await SiblingReleaseAsync(job, track, ct) is { } sibling)
+        {
+            logger.LogInformation("{Path}: Release {Release} wie die übrigen Tracks des Albums statt {Selected}",
+                job.SourcePath, sibling.ReleaseId, releaseId);
+            track = sibling;
+            releaseId = sibling.ReleaseId;
+        }
+
         track = track with { AcoustId = SelectedCandidate(job)?.AcoustId };
 
         var relative = LibraryPathRule.For(
@@ -96,9 +105,46 @@ public sealed class LibraryImporter(
         RemoveEmptyFolders(Path.GetDirectoryName(source)!, inboxRoot);
 
         job.State = ImportState.Imported;
+        job.SelectedReleaseId = releaseId;
         job.LibraryPath = libraryRelative;
         job.FinishedAt = time.GetUtcNow();
         logger.LogInformation("Übernommen: {Source} → {Target}", job.SourcePath, libraryRelative);
+    }
+
+    /// <summary>
+    /// Navidrome trennt ein Album, wenn seine Tracks verschiedene Releases tragen (EU- und US-CD
+    /// derselben Release-Group). Liegt das Album schon in der Library oder sind Tracks desselben
+    /// Inbox-Ordners schon übernommen, bekommt der Track deren Release, sofern er darauf vorkommt.
+    /// </summary>
+    private async Task<ReleaseTrack?> SiblingReleaseAsync(ImportJob job, ReleaseTrack track, CancellationToken ct)
+    {
+        if (track.ReleaseGroupId is not { } releaseGroup)
+            return null;
+
+        var group = job.Group;
+        var fromFolder = group.Length == 0
+            ? []
+            : (await db.ImportJobs
+                    .Where(j => j.Id != job.Id && j.State == ImportState.Imported && j.SourcePath.StartsWith(group + "/"))
+                    .ToListAsync(ct))
+                .Where(j => j.Group == group)
+                .Select(j => j.SelectedReleaseId).OfType<Guid>()
+                .GroupBy(id => id).OrderByDescending(g => g.Count()).Select(g => g.Key)
+                .ToList();
+        var fromLibrary = (await db.Albums
+                .Where(a => a.AlbumArtist.Name == track.AlbumArtist && a.MusicBrainzReleaseId != null)
+                .Select(a => new { a.Title, a.MusicBrainzReleaseId })
+                .ToListAsync(ct))
+            .Where(a => InboxImporter.SameTitle(a.Title, track.Album))
+            .Select(a => a.MusicBrainzReleaseId!.Value);
+
+        foreach (var release in fromFolder.Concat(fromLibrary).Distinct().Where(r => r != track.ReleaseId))
+        {
+            if (await lookup.GetReleaseTrackAsync(release, track.RecordingId, ct) is { } sibling && sibling.ReleaseGroupId == releaseGroup)
+                return sibling;
+        }
+
+        return null;
     }
 
     /// <summary>

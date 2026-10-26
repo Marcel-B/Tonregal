@@ -25,7 +25,7 @@ public sealed record TrackDto(
 
 public sealed record AlbumDetail(
     int Id, string Title, int? Year, AlbumKind Kind, int DiscCount, ArtistRef AlbumArtist, IReadOnlyList<TrackDto> Tracks,
-    bool CanFetchCover);
+    bool CanFetchCover, int ReleaseCount);
 
 public static class LibraryApi
 {
@@ -52,7 +52,7 @@ public static class LibraryApi
             return artist is null ? TypedResults.NotFound() : TypedResults.Ok(artist);
         });
 
-        library.MapGet("/albums/{id:int}", async Task<IResult> (int id, TonregalDbContext db, CancellationToken ct) =>
+        library.MapGet("/albums/{id:int}", async Task<IResult> (int id, TonregalDbContext db, IReleaseAligner aligner, CancellationToken ct) =>
         {
             var album = await db.Albums
                 .Include(a => a.AlbumArtist)
@@ -74,7 +74,33 @@ public static class LibraryApi
             return TypedResults.Ok(new AlbumDetail(
                 album.Id, album.Title, album.Year, album.Kind, album.DiscCount,
                 new ArtistRef(album.AlbumArtist.Id, album.AlbumArtist.Name), tracks,
-                album.CoverPath is null && album.MusicBrainzReleaseId is not null));
+                album.CoverPath is null && album.MusicBrainzReleaseId is not null,
+                await aligner.CountReleasesAsync(album.Id, ct)));
+        });
+
+        // Alle Tracks auf ein Release bringen, damit Navidrome das Album nicht aufteilt.
+        library.MapPost("/albums/{id:int}/align-release", async Task<IResult> (
+            int id, IReleaseAligner aligner, LibraryScanService scans, CancellationToken ct) =>
+        {
+            try
+            {
+                var result = await aligner.AlignAsync(id, ct);
+                if (result.Changed > 0)
+                    scans.RequestScan();
+                return TypedResults.Ok(result);
+            }
+            catch (KeyNotFoundException)
+            {
+                return TypedResults.NotFound();
+            }
+            catch (LibraryUnavailableException e)
+            {
+                return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+            catch (Exception e) when (e is ExternalToolUnavailableException or HttpRequestException or InvalidDataException or IOException)
+            {
+                return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
         });
 
         library.MapGet("/albums/{id:int}/cover", async Task<IResult> (

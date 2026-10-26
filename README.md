@@ -121,7 +121,11 @@ dann Tags (MP3 als ID3v2.4, Feldnamen wie Picard) und Cover in eine Kopie, prüf
 nach der Ordnerregel `Library/{AlbumArtist}/{Jahr} - {Album}/{Disc-}{NN} - {Titel}.{ext}` um und löscht
 erst dann das Original aus der Inbox. `cover.jpg` im Albumordner kommt aus der Datei oder dem Cover Art
 Archive (hat die Ausgabe dort keins, das Standard-Cover des Albums); fehlt es, holt *Cover suchen* auf
-der Albumseite es nach. *Verwerfen* lässt die Datei in der Inbox liegen, ohne sie erneut abzugleichen.
+der Albumseite es nach. Liegen schon Tracks desselben Albums in der Library oder wurden welche aus
+demselben Inbox-Ordner übernommen, bekommt jeder weitere Track deren Release, sofern er darauf steht:
+Navidrome trennt Alben nach MusicBrainz-Release-ID. Tragen die Tracks eines Albums trotzdem verschiedene
+Ausgaben, bringt *Ausgaben vereinheitlichen* auf der Albumseite alle auf das Release der Mehrheit.
+*Verwerfen* lässt die Datei in der Inbox liegen, ohne sie erneut abzugleichen.
 Dateien und Ordner lassen sich auch per Drag & Drop auf die Inbox-Seite hochladen; lose Dateien landen
 gemeinsam in einem Ordner `Upload {Datum Uhrzeit}`.
 

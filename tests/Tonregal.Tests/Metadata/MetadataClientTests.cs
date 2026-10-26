@@ -159,13 +159,17 @@ public sealed class MetadataClientTests : IDisposable
 
         var candidates = await lookup.SearchByTagsAsync("Evanescence", "Bring \"Me\" to Life", "Fallen", 236_000, Ct);
 
+        Assert.Equal(3, candidates.Count);
         // Der Treffer mit Score 40 fällt weg, die Live-Version liegt zeitlich daneben.
         Assert.Equal(["Fallen", "Bring Me to Life", "Anywhere but Home"], candidates.Select(c => c.ReleaseTitle));
         Assert.Equal((2, 11, 1.0), (candidates[0].TrackNumber, candidates[0].TrackCount, candidates[0].Score));
         Assert.Null(candidates[0].AcoustId);
         Assert.Equal(10, candidates[2].TrackNumber);
-        var uri = Uri.UnescapeDataString(musicBrainz.Requests.Single().Request.RequestUri!.Query);
-        Assert.Contains("recording:\"Bring \\\"Me\\\" to Life\" AND artist:\"Evanescence\"", uri);
+        // Erst mit Album, dann ohne; doppelte Aufnahmen zählen einmal.
+        var queries = musicBrainz.Requests.Select(r => Uri.UnescapeDataString(r.Request.RequestUri!.Query)).ToList();
+        Assert.Equal(2, queries.Count);
+        Assert.Contains("recording:\"Bring \\\"Me\\\" to Life\" AND artist:\"Evanescence\" AND release:\"Fallen\"", queries[0]);
+        Assert.DoesNotContain("release:", queries[1]);
     }
 
     [Fact]

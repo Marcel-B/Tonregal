@@ -68,7 +68,15 @@ public sealed class MetadataLookup(
     public async Task<IReadOnlyList<RecordingCandidate>> SearchByTagsAsync(
         string artist, string title, string? album, int durationMs, CancellationToken ct)
     {
-        var recordings = await musicBrainz.SearchRecordingsAsync(artist, title, ct);
+        // Erst mit dem Album aus den Tags suchen: bei vielgespielten Songs stehen sonst Live-Mitschnitte
+        // und Compilations vorn und die Album-Aufnahme fällt aus der Trefferliste.
+        IReadOnlyList<MbSearchRecording> onAlbum = string.IsNullOrWhiteSpace(album)
+            ? []
+            : await musicBrainz.SearchRecordingsAsync(artist, title, album, ct);
+        var seenRecordings = new HashSet<Guid>();
+        var recordings = onAlbum.Concat(await musicBrainz.SearchRecordingsAsync(artist, title, null, ct))
+            .Where(r => seenRecordings.Add(r.Id))
+            .ToList();
         var seenReleases = new HashSet<Guid>();
         return recordings
             .Where(r => r.Score >= MinimumSearchScore)

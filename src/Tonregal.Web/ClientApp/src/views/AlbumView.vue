@@ -40,6 +40,25 @@ async function fetchCover() {
   }
 }
 
+const aligning = ref(false)
+const alignMessage = ref<string | null>(null)
+async function alignRelease() {
+  aligning.value = true
+  alignMessage.value = null
+  try {
+    const result = await api.alignRelease(props.id)
+    alignMessage.value =
+      result.skipped > 0
+        ? `${result.changed} Tracks angepasst, ${result.skipped} stehen nicht auf diesem Release.`
+        : `${result.changed} Tracks angepasst.`
+    await load()
+  } catch (e) {
+    alignMessage.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    aligning.value = false
+  }
+}
+
 const totalDuration = computed(() => formatDuration(album.value?.tracks.reduce((sum, t) => sum + t.durationMs, 0) ?? 0))
 
 /** Weitere Artists neben dem Album-Artist, z. B. Gäste oder die Interpreten einer Compilation. */
@@ -76,6 +95,20 @@ function openMatch(track: TrackDto) {
         <div v-if="album.canFetchCover" class="mt-3 flex items-center gap-3">
           <Button label="Cover suchen" icon="pi pi-image" severity="secondary" size="small" :loading="fetchingCover" data-testid="fetch-cover" @click="fetchCover" />
           <span v-if="coverError" class="text-sm text-red-500">{{ coverError }}</span>
+        </div>
+        <div v-if="album.releaseCount > 1 || alignMessage" class="mt-3 flex items-center gap-3">
+          <Button
+            v-if="album.releaseCount > 1"
+            :label="`${album.releaseCount} Ausgaben vereinheitlichen`"
+            icon="pi pi-clone"
+            severity="secondary"
+            size="small"
+            :loading="aligning"
+            data-testid="align-release"
+            title="Die Tracks tragen verschiedene MusicBrainz-Releases, deshalb zeigt Navidrome das Album mehrfach."
+            @click="alignRelease"
+          />
+          <span v-if="alignMessage" class="text-sm text-surface-500" data-testid="align-message">{{ alignMessage }}</span>
         </div>
       </div>
     </div>

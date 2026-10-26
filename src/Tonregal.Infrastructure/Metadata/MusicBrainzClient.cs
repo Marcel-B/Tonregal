@@ -31,10 +31,12 @@ public sealed class MusicBrainzClient(
         GetAsync<MbRelease>($"release:{id}", $"release/{id}?inc=artist-credits+recordings+release-groups+media&fmt=json", ct);
 
     /// <summary>Aufnahmen nach Titel und Artist (Lucene-Suche), mit Releases; bis zu 25 Treffer.</summary>
-    public async Task<IReadOnlyList<MbSearchRecording>> SearchRecordingsAsync(string artist, string title, CancellationToken ct)
+    public async Task<IReadOnlyList<MbSearchRecording>> SearchRecordingsAsync(string artist, string title, string? album, CancellationToken ct)
     {
         var query = $"recording:\"{Escape(title)}\" AND artist:\"{Escape(artist)}\"";
-        var key = $"search:recording:{artist.ToLowerInvariant()}|{title.ToLowerInvariant()}";
+        if (album is not null)
+            query += $" AND release:\"{Escape(album)}\"";
+        var key = $"search:recording:{artist.ToLowerInvariant()}|{title.ToLowerInvariant()}|{album?.ToLowerInvariant()}";
         var result = await GetAsync<MbRecordingSearch>(key, $"recording?query={Uri.EscapeDataString(query)}&limit=25&fmt=json", ct);
         return result?.Recordings ?? [];
     }

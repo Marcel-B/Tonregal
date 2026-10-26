@@ -69,6 +69,14 @@ export interface AlbumDetail {
   albumArtist: { id: number; name: string }
   tracks: TrackDto[]
   canFetchCover: boolean
+  /** Verschiedene MusicBrainz-Releases in den Tags; ab 2 teilt Navidrome das Album auf. */
+  releaseCount: number
+}
+
+export interface ReleaseAlignResult {
+  releaseId: string | null
+  changed: number
+  skipped: number
 }
 
 export interface ScanProgress {
@@ -241,6 +249,7 @@ export const api = {
   importJobs: (jobIds: number[]) => request<InboxStatus>('POST', '/inbox/import', { jobIds }),
   releaseCoverUrl: (releaseId: string) => `https://coverartarchive.org/release/${releaseId}/front-250`,
   fetchCover: (albumId: number) => request<void>('POST', `/library/albums/${albumId}/cover`),
+  alignRelease: (albumId: number) => request<ReleaseAlignResult>('POST', `/library/albums/${albumId}/align-release`),
   audioUrl: (fileId: number) => `/api/library/files/${fileId}/audio`,
   duplicates: () => get<DuplicateGroup[]>('/duplicates'),
   scanDuplicates: () => request<ScanStatus>('POST', '/duplicates/scan'),

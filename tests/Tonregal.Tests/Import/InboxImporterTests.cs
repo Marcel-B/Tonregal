@@ -175,6 +175,7 @@ public sealed class InboxImporterTests : IDisposable
     [InlineData("Titel 12")]
     [InlineData("Track 03")]
     [InlineData("07")]
+    [InlineData("Vts 03 1")]
     public void Platzhalter_Titel_zaehlt_als_fehlender_Titel_und_der_Interpret_muss_passen(string title)
     {
         var job = new ImportJob { SourcePath = "x.mp3", DurationMs = 2000 };
@@ -329,6 +330,7 @@ public sealed class InboxImporterTests : IDisposable
     [InlineData("Teil 1 - Teil 2.mp3", null, "Band", "Teil 1 - Teil 2", "Band")]
     [InlineData("Garbage - Use Me.mp3", "Echter Titel", "Garbage", "Echter Titel", "Garbage")]
     [InlineData("Track 07.mp3", null, "Band", null, "Band")]
+    [InlineData("Nightwish - Vts 03 1.mp3", "Vts 03 1", "Nightwish", "Vts 03 1", "Nightwish")]
     public void Titel_und_Artist_aus_dem_Dateinamen(string file, string? title, string? artist, string? expectedTitle, string? expectedArtist)
     {
         var tags = InboxImporter.WithFileName(new AudioTags { Title = title, Artists = artist is null ? [] : [artist] }, $"/inbox/{file}");
@@ -385,6 +387,27 @@ public sealed class InboxImporterTests : IDisposable
         });
         Assert.Equal("AcoustID kennt diese Aufnahme nicht; Vorschlag nur über die Tags gefunden", jobs[0].ReviewReason);
         Assert.Equal("Kein Fingerprint (fpcalc konnte die Datei nicht lesen); Vorschlag nur über die Tags gefunden", jobs[1].ReviewReason);
+    }
+
+    [Fact]
+    public async Task Vorschlag_aus_den_Tags_nimmt_das_Album_aus_den_Tags_und_braucht_die_passende_Laenge()
+    {
+        // song1.mp3: Testband – Erster Song · Testalbum, etwa 2 s
+        Drop("song1.mp3", "A/01.mp3");
+        var otherAlbum = Candidate("Erster Song", 1.0) with { ReleaseTitle = "Live" };
+        var album = Candidate("Erster Song", 1.0, durationMs: 9_000);
+        _lookup.Search["Testband|Erster Song"] = [otherAlbum, album];
+
+        var job = Assert.Single(await ProcessAllAsync());
+        Assert.Equal(album.ReleaseId, job.SelectedReleaseId);
+
+        // Viel zu lang (oder ohne Länge bei MusicBrainz): kein Vorschlag, nur die Liste.
+        _db.ImportJobs.RemoveRange(_db.ImportJobs);
+        await _db.SaveChangesAsync(Ct);
+        _lookup.Search["Testband|Erster Song"] = [Candidate("Erster Song", 1.0, durationMs: 600_000), otherAlbum with { DurationMs = null }];
+        job = Assert.Single(await ProcessAllAsync());
+        Assert.Null(job.SelectedRecordingId);
+        Assert.Matches(@"^AcoustID kennt diese Aufnahme nicht; Dauer 0:0\d passt zu keinem Treffer über die Tags$", job.ReviewReason);
     }
 
     [Theory]
