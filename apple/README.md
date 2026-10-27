@@ -41,7 +41,8 @@ Einmalig:
 1. In App Store Connect unter *Apps → +* eine iOS-App mit der Bundle-ID `de.bvelop.tonregal` anlegen (falls die
    Bundle-ID dort fehlt: developer.apple.com → Identifiers → +, App IDs, `de.bvelop.tonregal`).
 2. Im Repo unter *Settings → Secrets and variables → Actions* dieselben vier Secrets wie bei Tonwerk-AI anlegen:
-   `APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (derselbe API-Key geht).
+   `APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (derselbe API-Key geht). Am einfachsten mit
+   `apple/set-testflight-secrets.sh`: fragt die Werte im Terminal ab (die `.p8` als Pfad) und setzt sie mit `gh`.
 
 Dann *Actions → TestFlight → Run workflow*. Der Workflow archiviert, signiert und lädt hoch (Build-Nummer 1000 plus die
 Laufnummer). Nach der Verarbeitung in App Store Connect unter *TestFlight* sich selbst als internen Tester eintragen und
