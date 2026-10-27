@@ -290,15 +290,47 @@ export interface IngestKeyInfo {
   createdAt: string | null
 }
 
+export type SmartPlaylistSort = 'Random' | 'Newest' | 'Bpm' | 'Title' | 'Artist'
+
+/** Leere Listen und Texte heißen „keine Regel“; alle gesetzten Regeln gelten zugleich. */
+export interface SmartPlaylistInput {
+  name: string
+  comment: string | null
+  bpmMin: number | null
+  bpmMax: number | null
+  keys: string[]
+  genre: string | null
+  addedWithinDays: number | null
+  neverPlayed: boolean
+  sort: SmartPlaylistSort
+  limit: number | null
+}
+
+export interface SmartPlaylist extends SmartPlaylistInput {
+  id: number
+  updatedAt: string
+  /** .nsp-Datei relativ zur Library. */
+  path: string
+  /** Passende Stücke in Tonregal, ohne Hör-Regeln (die kennt nur Navidrome). */
+  matching: number
+  nsp: string
+}
+
+export interface KeyCount {
+  key: string
+  tracks: number
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const form = body instanceof FormData
   if (body !== undefined && !form) headers['Content-Type'] = 'application/json'
   const response = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : form ? body : JSON.stringify(body) })
   if (!response.ok) {
-    // ProblemDetails der API tragen die eigentliche Fehlermeldung in "detail".
+    // ProblemDetails der API tragen die eigentliche Fehlermeldung in "detail", Validierungsfehler in "errors".
     const problem = await response.json().catch(() => null)
-    throw new Error(problem?.detail ?? `${path}: HTTP ${response.status}`)
+    const invalid = problem?.errors ? Object.values(problem.errors as Record<string, string[]>).flat()[0] : undefined
+    throw new Error(problem?.detail ?? invalid ?? `${path}: HTTP ${response.status}`)
   }
   return (response.status === 204 ? undefined : await response.json()) as T
 }
@@ -343,6 +375,11 @@ export const api = {
   ingestKeys: () => get<IngestKeyInfo[]>('/settings/ingest'),
   /** Neuer Key für die Quelle; der alte gilt danach nicht mehr. */
   regenerateIngestKey: (source: string) => request<IngestKeyInfo>('POST', `/settings/ingest/${encodeURIComponent(source)}/key`),
+  smartPlaylists: () => get<SmartPlaylist[]>('/smart-playlists'),
+  smartPlaylistKeys: () => get<KeyCount[]>('/smart-playlists/keys'),
+  createSmartPlaylist: (input: SmartPlaylistInput) => request<SmartPlaylist>('POST', '/smart-playlists', input),
+  updateSmartPlaylist: (id: number, input: SmartPlaylistInput) => request<SmartPlaylist>('PUT', `/smart-playlists/${id}`, input),
+  deleteSmartPlaylist: (id: number) => request<void>('DELETE', `/smart-playlists/${id}`),
   backup: () => get<BackupResponse>('/backup'),
   runBackup: () => request<BackupStatus>('POST', '/backup/run'),
   cancelBackup: () => request<BackupStatus>('POST', '/backup/cancel'),

@@ -33,7 +33,30 @@ public sealed class NavidromeClient(
         ? Path.Combine(tonregal.Value.MusicRoot, "navidrome", "navidrome.db")
         : O.Database;
 
-    public async Task<string?> FindSongIdAsync(string libraryPath, CancellationToken ct)
+    public Task<string?> FindSongIdAsync(string libraryPath, CancellationToken ct) => FindIdAsync("media_file", libraryPath, ct);
+
+    public async Task<bool> DeletePlaylistAsync(string libraryPath, CancellationToken ct)
+    {
+        if (await FindIdAsync("playlist", libraryPath, ct) is not { } playlistId)
+            return false;
+        try
+        {
+            using var response = await http.GetAsync(Url("deletePlaylist", $"id={Uri.EscapeDataString(playlistId)}&f=json"), ct);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            var ok = json.RootElement.GetProperty("subsonic-response").GetProperty("status").GetString() == "ok";
+            if (!ok)
+                logger.LogWarning("Navidrome löscht Playlist {Id} nicht: {Body}", playlistId, Truncate(json.RootElement.ToString()));
+            return ok;
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            logger.LogWarning("Navidrome-Playlist {Id} nicht gelöscht: {Message}", playlistId, e.Message);
+            return false;
+        }
+    }
+
+    /// <param name="table"><c>media_file</c> oder <c>playlist</c>, beide mit Spalten <c>id</c> und <c>path</c>.</param>
+    private async Task<string?> FindIdAsync(string table, string libraryPath, CancellationToken ct)
     {
         if (!O.Configured || !File.Exists(Database))
             return null;
@@ -51,7 +74,7 @@ public sealed class NavidromeClient(
             }.ToString());
             await connection.OpenAsync(ct);
             await using var command = connection.CreateCommand();
-            command.CommandText = $"SELECT id FROM media_file WHERE path IN ({string.Join(", ", candidates.Select((_, i) => $"$p{i}"))}) LIMIT 1";
+            command.CommandText = $"SELECT id FROM {table} WHERE path IN ({string.Join(", ", candidates.Select((_, i) => $"$p{i}"))}) LIMIT 1";
             for (var i = 0; i < candidates.Length; i++)
                 command.Parameters.AddWithValue($"$p{i}", candidates[i]);
             return await command.ExecuteScalarAsync(ct) as string;

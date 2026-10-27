@@ -60,3 +60,12 @@ public enum BackupStatus
     Succeeded,
     Failed,
 }
+
+public enum SmartPlaylistSort
+{
+    Random,
+    Newest,
+    Bpm,
+    Title,
+    Artist,
+}

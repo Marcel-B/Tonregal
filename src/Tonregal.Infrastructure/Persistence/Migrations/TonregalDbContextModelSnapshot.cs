@@ -415,6 +415,81 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.ToTable("MetadataCache", (string)null);
                 });
 
+            modelBuilder.Entity("Tonregal.Domain.Entities.SmartPlaylist", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("AddedWithinDays")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("BpmMax")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("BpmMin")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Genre")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.PrimitiveCollection<string>("Keys")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Limit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("NeverPlayed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Sort")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("SmartPlaylists");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            AddedWithinDays = 30,
+                            Keys = "[]",
+                            Name = "Neu (30 Tage)",
+                            NeverPlayed = false,
+                            Sort = "Newest",
+                            UpdatedAt = 639286560000000000L
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Keys = "[]",
+                            Name = "Nie gehört",
+                            NeverPlayed = true,
+                            Sort = "Random",
+                            UpdatedAt = 639286560000000000L
+                        });
+                });
+
             modelBuilder.Entity("Tonregal.Domain.Entities.Track", b =>
                 {
                     b.Property<int>("Id")

@@ -127,3 +127,20 @@ internal sealed class IngestKeyConfiguration : IEntityTypeConfiguration<IngestKe
         b.Property(x => x.Key).HasMaxLength(128);
     }
 }
+
+internal sealed class SmartPlaylistConfiguration : IEntityTypeConfiguration<SmartPlaylist>
+{
+    public void Configure(EntityTypeBuilder<SmartPlaylist> b)
+    {
+        b.Property(x => x.Name).HasMaxLength(100);
+        b.HasIndex(x => x.Name).IsUnique();
+        b.Property(x => x.Comment).HasMaxLength(500);
+        b.Property(x => x.Genre).HasMaxLength(100);
+
+        // Die beiden Listen aus dem Plan als Startpunkt; gelöschte kommen nicht wieder.
+        var seeded = new DateTimeOffset(2026, 10, 27, 0, 0, 0, TimeSpan.Zero);
+        b.HasData(
+            new SmartPlaylist { Id = 1, Name = "Neu (30 Tage)", AddedWithinDays = 30, Sort = SmartPlaylistSort.Newest, UpdatedAt = seeded },
+            new SmartPlaylist { Id = 2, Name = "Nie gehört", NeverPlayed = true, Sort = SmartPlaylistSort.Random, UpdatedAt = seeded });
+    }
+}
