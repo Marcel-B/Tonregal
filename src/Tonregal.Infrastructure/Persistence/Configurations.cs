@@ -117,3 +117,13 @@ internal sealed class MetadataCacheEntryConfiguration : IEntityTypeConfiguration
         b.Property(x => x.Json).IsRequired();
     }
 }
+
+internal sealed class IngestKeyConfiguration : IEntityTypeConfiguration<IngestKey>
+{
+    public void Configure(EntityTypeBuilder<IngestKey> b)
+    {
+        b.HasKey(x => x.Source);
+        b.Property(x => x.Source).HasMaxLength(64);
+        b.Property(x => x.Key).HasMaxLength(128);
+    }
+}
