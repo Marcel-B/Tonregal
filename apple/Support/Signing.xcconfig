@@ -1,0 +1,7 @@
+// Das Team, das die App fürs iPhone signiert. Das Repo ist öffentlich, deshalb bleibt die Team-ID draußen: in
+// Local.xcconfig neben dieser Datei (von git ignoriert) eine Zeile
+//
+//     DEVELOPMENT_TEAM = ABCDE12345
+//
+// und in Xcodes „Signing & Capabilities“ das Team leer lassen, sonst schreibt Xcode es ins Projekt.
+#include? "Local.xcconfig"

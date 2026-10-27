@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import Foundation
+
+public struct TonregalError: LocalizedError, Sendable, Equatable {
+    public let message: String
+    public init(_ message: String) { self.message = message }
+    public var errorDescription: String? { message }
+}
+
+/// Die paar Aufrufe, die der Player braucht. Tonregal hat keine Anmeldung; wer im Tailnet ist, kommt heran.
+public struct TonregalClient: Sendable {
+    public let server: URL
+    private let session: URLSession
+
+    public init(server: URL, session: URLSession = .shared) {
+        self.server = server
+        self.session = session
+    }
+
+    public func health() async throws -> Health { try await get("api/health") }
+    public func artists() async throws -> [ArtistSummary] { try await get("api/library/artists") }
+    public func artist(_ id: Int) async throws -> ArtistDetail { try await get("api/library/artists/\(id)") }
+    public func albums() async throws -> [AlbumListItem] { try await get("api/library/albums") }
+    public func album(_ id: Int) async throws -> AlbumDetail { try await get("api/library/albums/\(id)") }
+
+    public func coverURL(album id: Int) -> URL { url("api/library/albums/\(id)/cover") }
+
+    /// Über Navidrome (Transcoding, Play-Counts), sonst die Datei selbst; Range-Anfragen gehen durch.
+    public func streamURL(file id: Int) -> URL { url("api/player/files/\(id)/stream") }
+
+    /// `submission: false` meldet „läuft gerade“, `true` zählt die Wiedergabe. 202 heißt: Navidrome kennt die Datei
+    /// noch nicht, das ist kein Fehler.
+    public func scrobble(file id: Int, submission: Bool) async throws {
+        var request = URLRequest(url: url("api/player/files/\(id)/scrobble?submission=\(submission)"))
+        request.httpMethod = "POST"
+        let (data, response) = try await session.data(for: request)
+        try check(data, response)
+    }
+
+    private func url(_ path: String) -> URL {
+        URL(string: path, relativeTo: server)!.absoluteURL
+    }
+
+    private func get<T: Decodable>(_ path: String) async throws -> T {
+        var request = URLRequest(url: url(path))
+        request.timeoutInterval = 20
+        let data: Data, response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw TonregalError(Self.describe(error))
+        }
+        try check(data, response)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw TonregalError("Die Antwort des Servers passt nicht zur App (\(path)). Ist Tonregal aktuell?")
+        }
+    }
+
+    private func check(_ data: Data, _ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse else { return }
+        guard (200..<300).contains(http.statusCode) else {
+            // ASP.NET antwortet Fehler als Problem Details; deren `detail` ist die lesbare Meldung.
+            let problem = try? JSONDecoder().decode(Problem.self, from: data)
+            throw TonregalError(problem?.detail ?? problem?.title ?? "Der Server antwortet mit \(http.statusCode).")
+        }
+    }
+
+    static func describe(_ error: URLError) -> String {
+        switch error.code {
+        case .cannotFindHost, .dnsLookupFailed:
+            "Server nicht gefunden. Ist Tailscale auf dem iPhone verbunden?"
+        case .cannotConnectToHost, .timedOut, .networkConnectionLost, .notConnectedToInternet:
+            "Tonregal antwortet nicht. Ist Tailscale verbunden und läuft der Dienst auf oi-o-mat?"
+        case .appTransportSecurityRequiresSecureConnection:
+            "iOS lässt die Verbindung ohne HTTPS nicht zu."
+        default:
+            error.localizedDescription
+        }
+    }
+
+    private struct Problem: Decodable {
+        let title: String?
+        let detail: String?
+    }
+}

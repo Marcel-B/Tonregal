@@ -1,0 +1,113 @@
+# Baut die Tonregal-App fürs iPhone, signiert sie für den App Store und lädt sie zu TestFlight hoch: von Hand über
+# Actions → TestFlight → Run workflow. Übernommen aus Marcel-B/Tonwerk-AI und braucht dieselben Repository-Secrets:
+#   APPLE_TEAM_ID   die Team-ID des Developer-Accounts
+#   ASC_KEY_ID      die ID des App-Store-Connect-API-Keys (die zehn Zeichen in AuthKey_<id>.p8)
+#   ASC_ISSUER_ID   die Issuer-ID über der Key-Liste in App Store Connect
+#   ASC_KEY_P8      der Inhalt von AuthKey_<id>.p8
+# Mit der Admin-Rolle des Keys erzeugt Xcode Distributionszertifikat und Profil selbst (cloud-managed signing); nur der
+# Eintrag der App in App Store Connect (Bundle-ID de.bvelop.tonregal) muss existieren.
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (leer: MARKETING_VERSION aus dem Projekt)"
+        required: false
+        type: string
+
+jobs:
+  upload:
+    name: Tonregal-App zu TestFlight
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apple
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      # App Store Connect takes only apps built with the iOS 26 SDK or later (ITMS-90725); the runner's default Xcode
+      # may be older, so the newest Xcode 26 or later it carries is chosen.
+      - name: Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_*.app | grep -iv beta | sort -V | tail -1)
+          version=$(basename "$xcode" .app); version=${version#Xcode_}
+          (( ${version%%.*} >= 26 )) || { echo "::error::no Xcode 26 on the runner"; ls -d /Applications/Xcode*; exit 1; }
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - name: Check the secrets
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=0
+          for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            [[ -n "${!name}" ]] || { echo "::error::secret $name is missing"; missing=1; }
+          done
+          exit $missing
+      - name: Version and build number
+        run: |
+          version="${{ inputs.version }}"
+          if [[ -z "$version" ]]; then
+            version=$(grep -m1 -oE 'MARKETING_VERSION = [^;]+' Tonregal.xcodeproj/project.pbxproj | cut -d' ' -f3)
+          fi
+          # TestFlight nimmt jeden Upload nur mit neuer Build-Nummer; von Hand in Xcode archivierte Builds haben kleine
+          # (CURRENT_PROJECT_VERSION), die des Workflows beginnen weit darüber und wachsen mit jedem Lauf.
+          build=$((1000 + ${{ github.run_number }}))
+          echo "TONREGAL_VERSION=$version" >> "$GITHUB_ENV"
+          echo "TONREGAL_BUILD_NUMBER=$build" >> "$GITHUB_ENV"
+          echo "Tonregal $version ($build)"
+      - name: API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          chmod 600 "$key"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+      - name: Archive
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Unsigned: signing the archive made each fresh runner create an Apple Development certificate of its
+          # own, until the account's limit refused the next ("Choose a certificate to revoke"). The export below
+          # signs the app anyway, with the cloud-managed distribution certificate, which uses up no slot.
+          xcodebuild archive -project Tonregal.xcodeproj -scheme Tonregal -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Tonregal.xcarchive" \
+            -skipPackagePluginValidation \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            MARKETING_VERSION="$TONREGAL_VERSION" CURRENT_PROJECT_VERSION="$TONREGAL_BUILD_NUMBER" \
+            > "$RUNNER_TEMP/archive.log" 2>&1 || { grep -E "error:" "$RUNNER_TEMP/archive.log" | sort -u | head -50; tail -100 "$RUNNER_TEMP/archive.log"; exit 1; }
+          grep -E "ARCHIVE SUCCEEDED" "$RUNNER_TEMP/archive.log"
+      - name: Upload to TestFlight
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          options="$RUNNER_TEMP/ExportOptions.plist"
+          cat > "$options" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key><string>app-store-connect</string>
+              <key>destination</key><string>upload</string>
+              <key>teamID</key><string>$APPLE_TEAM_ID</string>
+              <key>signingStyle</key><string>automatic</string>
+              <key>manageAppVersionAndBuildNumber</key><false/>
+              <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Tonregal.xcarchive" -exportOptionsPlist "$options" \
+            -exportPath "$RUNNER_TEMP/export" -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Remove the key
+        if: always()
+        working-directory: .
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"

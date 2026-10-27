@@ -66,6 +66,12 @@ public sealed class LibraryApiTests : IDisposable
         Assert.Equal(["Erster Song", "Zweiter Song (feat. Gast)", "Dritter Song"], album!.Tracks.Select(t => t.Title));
         Assert.Equal(AudioFormat.Flac, album.Tracks[1].Files[0].Format);
 
+        var albums = await _client.GetFromJsonAsync<List<AlbumListItem>>("/api/library/albums", Json, ct);
+        var listed = Assert.Single(albums!, a => a.Id == albumSummary.Id);
+        Assert.Equal("Testband", listed.AlbumArtist.Name);
+        Assert.Equal(3, listed.TrackCount);
+        Assert.Equal(albums!.Select(a => a.Id).OrderDescending(), albums!.Select(a => a.Id));
+
         var cover = await _client.GetAsync($"/api/library/albums/{albumSummary.Id}/cover", ct);
         Assert.Equal(HttpStatusCode.OK, cover.StatusCode);
         Assert.Equal("image/jpeg", cover.Content.Headers.ContentType?.MediaType);
