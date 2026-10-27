@@ -75,6 +75,39 @@ public sealed class TagLibTagWriter : ITagWriter
         file.Save();
     }
 
+    public void WriteIngest(string path, IngestMetadata metadata, string album, EmbeddedPicture? cover)
+    {
+        using (var file = Open(path))
+        {
+            if (file is TagLib.Mpeg.AudioFile or TagLib.Riff.File)
+                file.GetTag(TagTypes.Id3v2, true);
+
+            var tag = file.Tag;
+            tag.Title = metadata.Title;
+            tag.Performers = [metadata.Artist];
+            tag.AlbumArtists = [metadata.Artist];
+            tag.Album = album;
+            if (metadata.Year is { } year)
+                tag.Year = (uint)year;
+            if (metadata.Track is { } track)
+                tag.Track = (uint)track;
+            if (!string.IsNullOrWhiteSpace(metadata.Genre))
+                tag.Genres = [metadata.Genre];
+            if (cover is not null && tag.Pictures.Length == 0)
+            {
+                tag.Pictures =
+                [
+                    new Picture(new ByteVector(cover.Data)) { Type = PictureType.FrontCover, MimeType = cover.MimeType, Description = "Cover" },
+                ];
+            }
+
+            file.Save();
+        }
+
+        if (metadata.Bpm is not null || !string.IsNullOrWhiteSpace(metadata.Key))
+            WriteAnalysis(path, metadata.Bpm, string.IsNullOrWhiteSpace(metadata.Key) ? null : metadata.Key);
+    }
+
     public void WriteAnalysis(string path, double? bpm, string? key)
     {
         using var file = Open(path);

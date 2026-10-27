@@ -66,7 +66,7 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi();
+app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi().MapIngestApi();
 app.MapHub<StatusHub>("/hub");
 app.MapFallbackToFile("index.html");
 

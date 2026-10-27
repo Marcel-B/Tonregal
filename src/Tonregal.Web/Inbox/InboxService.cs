@@ -153,6 +153,8 @@ public sealed class InboxService(
             if (job.State == ImportState.Imported)
                 imported++;
             await PublishAsync(_status with { CurrentPath = job.SourcePath, Imported = imported, ImportsPending = _imports.Count }, ct);
+            if (job.Source == FileSource.Api)
+                await SendAsync(Api.IngestApi.StatusEvent, Api.IngestJobDto.From(job), ct);
         }
 
         if (imported > 0)
@@ -232,16 +234,21 @@ public sealed class InboxService(
         logger.LogInformation("Inbox-Watcher auf {Inbox}", inbox);
     }
 
-    private async Task PublishAsync(InboxStatus status, CancellationToken ct)
+    private Task PublishAsync(InboxStatus status, CancellationToken ct)
     {
         _status = status;
+        return SendAsync(StatusEvent, status, ct);
+    }
+
+    private async Task SendAsync(string name, object payload, CancellationToken ct)
+    {
         try
         {
-            await hub.Clients.All.SendAsync(StatusEvent, status, ct);
+            await hub.Clients.All.SendAsync(name, payload, ct);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            logger.LogDebug(e, "inboxStatus konnte nicht gesendet werden");
+            logger.LogDebug(e, "{Event} konnte nicht gesendet werden", name);
         }
     }
 }

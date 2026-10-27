@@ -30,7 +30,8 @@ public sealed class LibraryImporter(
 {
     private const string TempPrefix = ".tonregal-";
 
-    public Task<ImportJob> ImportAsync(int jobId, CancellationToken ct) => RunAsync(jobId, ImportAsync, ct);
+    public Task<ImportJob> ImportAsync(int jobId, CancellationToken ct) =>
+        RunAsync(jobId, (job, token) => job.Source == FileSource.Api ? ImportIngestAsync(job, token) : ImportAsync(job, token), ct);
 
     public Task<ImportJob> ImportUnmatchedAsync(int jobId, CancellationToken ct) => RunAsync(jobId, ImportUnmatchedAsync, ct);
 
@@ -122,6 +123,56 @@ public sealed class LibraryImporter(
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Stück aus der Ingest-API: Metadaten vom Aufrufer, kein MusicBrainz. Ohne Album wird es eine
+    /// Single unter seinem Titel; ein mitgeschicktes Cover wird eingebettet und, falls noch keins da
+    /// ist, als cover.jpg in den Albumordner gelegt.
+    /// </summary>
+    private async Task ImportIngestAsync(ImportJob job, CancellationToken ct)
+    {
+        if (job.State != ImportState.Matched || job.IngestMetadata is null)
+            throw new InvalidOperationException("Nur angenommene Ingest-Jobs lassen sich übernehmen");
+
+        var source = Source(job);
+        var metadata = JsonSerializer.Deserialize<IngestMetadata>(job.IngestMetadata, InboxImporter.Json)!;
+        var album = string.IsNullOrWhiteSpace(metadata.Album) ? metadata.Title : metadata.Album.Trim();
+        var kind = string.IsNullOrWhiteSpace(metadata.Album) ? AlbumKind.Single : AlbumKind.Album;
+        var folder = LibraryPathRule.AlbumFolder(metadata.Artist, metadata.Year, album, kind);
+        var fileName = metadata.Track is { } number
+            ? LibraryPathRule.FileName(1, 1, number, metadata.Title, Path.GetExtension(source))
+            : LibraryPathRule.Sanitize(metadata.Title) + Path.GetExtension(source).ToLowerInvariant();
+
+        var coverFile = source + IngestService.CoverSuffix;
+        EmbeddedPicture? cover = null;
+        if (File.Exists(coverFile) && await File.ReadAllBytesAsync(coverFile, ct) is var data && ImageType(data) is { } mime)
+        {
+            cover = new EmbeddedPicture(data, mime);
+            var albumFolder = Path.Combine(Path.GetFullPath(options.Value.Library), folder);
+            var target = Path.Combine(albumFolder, mime == "image/png" ? "cover.png" : "cover.jpg");
+            if (!File.Exists(Path.Combine(albumFolder, "cover.jpg")) && !File.Exists(Path.Combine(albumFolder, "cover.png")))
+            {
+                Directory.CreateDirectory(albumFolder);
+                await File.WriteAllBytesAsync(target, data, ct);
+            }
+        }
+
+        Place(job, source, Path.Combine(folder, fileName), temp =>
+        {
+            tagWriter.WriteIngest(temp, metadata, album, cover);
+            if (tagReader.Read(temp).Tags.Title != metadata.Title)
+                throw new InvalidDataException($"Tags ließen sich nicht korrekt schreiben: {Path.GetFileName(source)}");
+        });
+        if (File.Exists(coverFile))
+            File.Delete(coverFile);
+    }
+
+    private static string? ImageType(byte[] data) => data switch
+    {
+        [0xFF, 0xD8, 0xFF, ..] => "image/jpeg",
+        [0x89, 0x50, 0x4E, 0x47, ..] => "image/png",
+        _ => null,
+    };
+
     private string Source(ImportJob job)
     {
         var o = options.Value;
@@ -160,7 +211,7 @@ public sealed class LibraryImporter(
                 File.Delete(temp);
         }
 
-        if (job.Source == FileSource.Inbox)
+        if (job.Source != FileSource.Legacy)
         {
             File.Delete(source);
             RemoveEmptyFolders(Path.GetDirectoryName(source)!, inboxRoot);
