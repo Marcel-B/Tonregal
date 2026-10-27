@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
@@ -37,10 +34,10 @@ public static class IngestApi
 
         ingest.MapPost("/", async Task<IResult> (
                 HttpRequest request, IFormFile file, [FromForm] string metadata, IFormFile? cover,
-                IOptions<IngestOptions> options, IIngestService service, InboxService inbox, CancellationToken ct) =>
+                IIngestKeys keys, IIngestService service, InboxService inbox, CancellationToken ct) =>
             {
-                if (Authenticate(request, options.Value) is not { } source)
-                    return Unauthorized(options.Value);
+                if (await AuthenticateAsync(request, keys, ct) is not { } source)
+                    return await UnauthorizedAsync(keys, ct);
 
                 IngestMetadata? parsed;
                 try
@@ -85,10 +82,10 @@ public static class IngestApi
             .WithFormOptions(multipartBodyLengthLimit: 4L << 30);
 
         ingest.MapGet("/{id:int}", async Task<IResult> (
-            int id, HttpRequest request, IOptions<IngestOptions> options, IIngestService service, CancellationToken ct) =>
+            int id, HttpRequest request, IIngestKeys keys, IIngestService service, CancellationToken ct) =>
         {
-            if (Authenticate(request, options.Value) is not { } source)
-                return Unauthorized(options.Value);
+            if (await AuthenticateAsync(request, keys, ct) is not { } source)
+                return await UnauthorizedAsync(keys, ct);
             return await service.FindAsync(source, id, ct) is { } job
                 ? TypedResults.Ok(IngestJobDto.From(job))
                 : TypedResults.NotFound();
@@ -97,18 +94,10 @@ public static class IngestApi
         return api;
     }
 
-    /// <summary>Quelle zum API-Key aus dem Header oder <c>null</c>; vergleicht in konstanter Zeit.</summary>
-    internal static string? Authenticate(HttpRequest request, IngestOptions options)
-    {
-        var presented = Encoding.UTF8.GetBytes(request.Headers[KeyHeader].ToString());
-        if (presented.Length == 0)
-            return null;
-        return options.Keys
-            .Where(k => !string.IsNullOrWhiteSpace(k.Value))
-            .FirstOrDefault(k => CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(k.Value), presented)).Key;
-    }
+    private static Task<string?> AuthenticateAsync(HttpRequest request, IIngestKeys keys, CancellationToken ct) =>
+        keys.AuthenticateAsync(request.Headers[KeyHeader].ToString(), ct);
 
-    private static IResult Unauthorized(IngestOptions options) => options.Keys.Values.Any(v => !string.IsNullOrWhiteSpace(v))
+    private static async Task<IResult> UnauthorizedAsync(IIngestKeys keys, CancellationToken ct) => await keys.AnyAsync(ct)
         ? TypedResults.Problem($"{KeyHeader} fehlt oder ist unbekannt", statusCode: StatusCodes.Status401Unauthorized)
-        : TypedResults.Problem("Ingest-API nicht eingerichtet: Tonregal:Ingest:Keys in appsettings.Production.json", statusCode: StatusCodes.Status503ServiceUnavailable);
+        : TypedResults.Problem("Ingest-API nicht eingerichtet: Key auf der Seite „Verbindungen“ erzeugen", statusCode: StatusCodes.Status503ServiceUnavailable);
 }

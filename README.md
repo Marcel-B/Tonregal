@@ -175,7 +175,12 @@ rclone lsd nextcloud:Musik   # Test
 ```
 
 **Ingest-API:** Eigene Stücke (z. B. aus Tonwerk-AI) kommen ohne Abgleich und Review direkt in die
-Library. Je Quelle einen API-Key in `appsettings.Production.json` eintragen; der Key bestimmt die Quelle:
+Library. Der Key bestimmt die Quelle. Am einfachsten erzeugt ihn die Seite **Verbindungen**: Sie zeigt den
+Key für `tonwerk-ai` verdeckt an, kopiert ihn oder gleich die zwei Zeilen für `~/.config/tonwerk/tonregal.env`
+auf dem Mac mit Tonwerks Server, und erzeugt auf Wunsch einen neuen (der alte gilt dann nicht mehr). Die Keys
+liegen in der Datenbank. Tonregal hat keine Anmeldung, wer die Oberfläche erreicht, sieht sie also.
+Alternativ geht ein fester Key in `appsettings.Production.json`; er hat für seine Quelle Vorrang und lässt
+sich auf der Seite nicht ändern:
 
 ```json
 { "Tonregal": { "Ingest": { "Keys": { "tonwerk-ai": "<openssl rand -hex 32>" } } } }

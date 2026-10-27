@@ -281,6 +281,15 @@ export interface ToolStatus {
   acoustIdConfigured: boolean
 }
 
+/** API-Key einer Ingest-Quelle; key ist null, solange keiner erzeugt wurde. */
+export interface IngestKeyInfo {
+  source: string
+  key: string | null
+  /** Steht in appsettings.Production.json und lässt sich nur dort ändern. */
+  fromConfig: boolean
+  createdAt: string | null
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const form = body instanceof FormData
@@ -331,6 +340,9 @@ export const api = {
   streamUrl: (fileId: number) => `/api/player/files/${fileId}/stream`,
   /** submission=false meldet „läuft gerade“, true zählt das Stück in Navidrome als gehört. */
   scrobble: (fileId: number, submission: boolean) => request<void>('POST', `/player/files/${fileId}/scrobble?submission=${submission}`),
+  ingestKeys: () => get<IngestKeyInfo[]>('/settings/ingest'),
+  /** Neuer Key für die Quelle; der alte gilt danach nicht mehr. */
+  regenerateIngestKey: (source: string) => request<IngestKeyInfo>('POST', `/settings/ingest/${encodeURIComponent(source)}/key`),
   backup: () => get<BackupResponse>('/backup'),
   runBackup: () => request<BackupStatus>('POST', '/backup/run'),
   cancelBackup: () => request<BackupStatus>('POST', '/backup/cancel'),

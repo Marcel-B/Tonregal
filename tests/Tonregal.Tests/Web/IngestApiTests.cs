@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
 using Tonregal.Infrastructure.Tagging;
 using Tonregal.Web.Api;
@@ -160,5 +161,35 @@ public sealed class IngestApiTests : IDisposable
         var foreign = await client.PostAsync("/api/ingest", Form(new { externalId = "a", title = "T", artist = "A", source = "andere" }), Ct);
         Assert.Equal(HttpStatusCode.BadRequest, foreign.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/ingest/999", Ct)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Key_aus_der_Seite_Verbindungen_gilt_und_ersetzt_den_alten()
+    {
+        var metadata = new { externalId = "a", title = "T", artist = "A" };
+        var client = Client(key: null, configured: false);
+        var listed = await client.GetFromJsonAsync<IngestKeyInfo[]>("/api/settings/ingest", Json, Ct);
+        Assert.Equal([new IngestKeyInfo("tonwerk-ai", null, false, null)], listed!);
+
+        var first = await (await client.PostAsync("/api/settings/ingest/tonwerk-ai/key", null, Ct)).Content.ReadFromJsonAsync<IngestKeyInfo>(Json, Ct);
+        var second = await (await client.PostAsync("/api/settings/ingest/tonwerk-ai/key", null, Ct)).Content.ReadFromJsonAsync<IngestKeyInfo>(Json, Ct);
+        Assert.NotEqual(first!.Key, second!.Key);
+        Assert.Equal(second.Key, Assert.Single((await client.GetFromJsonAsync<IngestKeyInfo[]>("/api/settings/ingest", Json, Ct))!).Key);
+
+        client.DefaultRequestHeaders.Add(IngestApi.KeyHeader, first.Key);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsync("/api/ingest", Form(metadata), Ct)).StatusCode);
+        client.DefaultRequestHeaders.Remove(IngestApi.KeyHeader);
+        client.DefaultRequestHeaders.Add(IngestApi.KeyHeader, second.Key);
+        Assert.Equal(HttpStatusCode.Accepted, (await client.PostAsync("/api/ingest", Form(metadata), Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/api/settings/ingest/Gross%20Schreibung/key", null, Ct)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Key_aus_appsettings_wird_angezeigt_aber_nicht_ersetzt()
+    {
+        var client = Client();
+        var listed = await client.GetFromJsonAsync<IngestKeyInfo[]>("/api/settings/ingest", Json, Ct);
+        Assert.Equal([new IngestKeyInfo("tonwerk-ai", Key, true, null)], listed!);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync("/api/settings/ingest/tonwerk-ai/key", null, Ct)).StatusCode);
     }
 }

@@ -378,6 +378,25 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.ToTable("ImportJobs");
                 });
 
+            modelBuilder.Entity("Tonregal.Domain.Entities.IngestKey", b =>
+                {
+                    b.Property<string>("Source")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Source");
+
+                    b.ToTable("IngestKeys");
+                });
+
             modelBuilder.Entity("Tonregal.Domain.Entities.MetadataCacheEntry", b =>
                 {
                     b.Property<string>("Key")

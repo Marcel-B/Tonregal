@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<ILibraryImporter, LibraryImporter>();
         services.Configure<IngestOptions>(configuration.GetSection(IngestOptions.SectionName));
         services.AddScoped<IIngestService, IngestService>();
+        services.AddScoped<IIngestKeys, IngestKeys>();
         services.AddScoped<IDuplicateService, DuplicateService>();
         services.AddScoped<IReleaseAligner, ReleaseAligner>();
         services.AddMetadataServices(configuration);

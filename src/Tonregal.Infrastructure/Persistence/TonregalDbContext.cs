@@ -5,8 +5,8 @@ using Tonregal.Domain.Entities;
 namespace Tonregal.Infrastructure.Persistence;
 
 /// <summary>
-/// Index über die Library. Bis auf <see cref="ImportJobs"/>, <see cref="DuplicateGroups"/> und
-/// <see cref="BackupRuns"/> lässt sich alles aus den Tags der Dateien neu aufbauen.
+/// Index über die Library. Bis auf <see cref="ImportJobs"/>, <see cref="DuplicateGroups"/>,
+/// <see cref="BackupRuns"/> und <see cref="IngestKeys"/> lässt sich alles aus den Tags der Dateien neu aufbauen.
 /// </summary>
 public class TonregalDbContext(DbContextOptions<TonregalDbContext> options) : DbContext(options)
 {
@@ -19,6 +19,7 @@ public class TonregalDbContext(DbContextOptions<TonregalDbContext> options) : Db
     public DbSet<AnalysisResult> AnalysisResults => Set<AnalysisResult>();
     public DbSet<BackupRun> BackupRuns => Set<BackupRun>();
     public DbSet<MetadataCacheEntry> MetadataCache => Set<MetadataCacheEntry>();
+    public DbSet<IngestKey> IngestKeys => Set<IngestKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(TonregalDbContext).Assembly);
