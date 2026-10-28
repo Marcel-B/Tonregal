@@ -16,6 +16,12 @@ export const routes = [
   },
   { path: '/analysis', name: 'analysis', component: () => import('./views/AnalysisView.vue'), meta: { title: 'Analyse', icon: 'pi pi-sliders-h' } },
   { path: '/duplicates', name: 'duplicates', component: () => import('./views/DuplicatesView.vue'), meta: { title: 'Dubletten', icon: 'pi pi-clone' } },
+  {
+    path: '/playlists',
+    name: 'playlists',
+    component: () => import('./views/SmartPlaylistsView.vue'),
+    meta: { title: 'Smart Playlists', icon: 'pi pi-list' },
+  },
   { path: '/connections', name: 'connections', component: () => import('./views/ConnectionsView.vue'), meta: { title: 'Verbindungen', icon: 'pi pi-link' } },
 ]
 

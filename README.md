@@ -211,6 +211,14 @@ Die URL setzt das Deploy-Script; Benutzer und Passwort des Navidrome-Kontos geh�
 { "Tonregal": { "Navidrome": { "User": "…", "Password": "…" } } }
 ```
 
+**Smart Playlists:** Auf der Seite *Smart Playlists* legt man Regeln an (BPM-Bereich, Tonarten mit
+„+ passende“ für Quinte hoch/runter und Paralleltonart, Genre, neu seit n Tagen, nie gehört, Sortierung,
+Höchstzahl). Tonregal schreibt sie als `Library/Playlists/tonregal-{id}.nsp`; Navidrome liest sie beim
+nächsten Scan ein (Besitzer ist der erste Admin) und füllt sie selbst, sie erscheinen also auch in Amperfy.
+Der Dateiname hängt an der ID, ein Umbenennen ändert nur den Namen in Navidrome. Beim Löschen entfernt
+Tonregal die Datei und, mit Navidrome-Zugang aus `appsettings.Production.json`, auch die Playlist in
+Navidrome, die sonst stehen bliebe. „Neu (30 Tage)“ und „Nie gehört“ sind zum Start angelegt.
+
 Am iPhone in Safari *Teilen → Zum Home-Bildschirm* wählen, dann startet Tonregal wie eine App.
 
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf

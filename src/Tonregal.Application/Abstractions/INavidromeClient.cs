@@ -3,7 +3,7 @@ using System.Net.Http.Headers;
 
 namespace Tonregal.Application.Abstractions;
 
-/// <summary>Navidromes Subsonic-API, soweit der Player sie braucht.</summary>
+/// <summary>Navidromes Subsonic-API, soweit Player und Smart Playlists sie brauchen.</summary>
 public interface INavidromeClient
 {
     /// <summary>Navidrome-ID der Datei (Pfad relativ zur Library) oder <c>null</c>, wenn Navidrome sie (noch) nicht kennt.</summary>
@@ -14,4 +14,10 @@ public interface INavidromeClient
 
     /// <summary>„Läuft gerade“ (<paramref name="submission"/> = false) oder gehört, für Play-Counts.</summary>
     Task<bool> ScrobbleAsync(string songId, bool submission, CancellationToken ct);
+
+    /// <summary>
+    /// Löscht die aus einer Datei eingelesene Playlist (Pfad relativ zur Library); Navidrome selbst behält sie sonst,
+    /// auch wenn die Datei weg ist. <c>false</c>, wenn Navidrome sie nicht kennt oder nicht erreichbar ist.
+    /// </summary>
+    Task<bool> DeletePlaylistAsync(string libraryPath, CancellationToken ct);
 }

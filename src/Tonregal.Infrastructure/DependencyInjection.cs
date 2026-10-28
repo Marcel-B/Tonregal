@@ -14,6 +14,7 @@ using Tonregal.Infrastructure.Import;
 using Tonregal.Infrastructure.Metadata;
 using Tonregal.Infrastructure.Navidrome;
 using Tonregal.Infrastructure.Persistence;
+using Tonregal.Infrastructure.Playlists;
 using Tonregal.Infrastructure.Tagging;
 
 namespace Tonregal.Infrastructure;
@@ -53,6 +54,7 @@ public static class DependencyInjection
         services.AddScoped<IBackupRunner, RcloneBackup>();
         services.Configure<NavidromeOptions>(configuration.GetSection(NavidromeOptions.SectionName));
         services.AddHttpClient<INavidromeClient, NavidromeClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddScoped<ISmartPlaylists, SmartPlaylists>();
         return services;
     }
 

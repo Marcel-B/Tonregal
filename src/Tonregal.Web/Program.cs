@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Tonregal.Application;
+using Tonregal.Application.Abstractions;
 using Tonregal.Infrastructure;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Analysis;
@@ -58,6 +59,14 @@ await using (var scope = app.Services.CreateAsyncScope())
     if (!string.IsNullOrEmpty(dbDirectory))
         Directory.CreateDirectory(dbDirectory);
     await db.Database.MigrateAsync();
+    try
+    {
+        await scope.ServiceProvider.GetRequiredService<ISmartPlaylists>().WriteFilesAsync(CancellationToken.None);
+    }
+    catch (IOException e)
+    {
+        app.Logger.LogWarning("Smart Playlists nicht geschrieben: {Message}", e.Message);
+    }
     app.Logger.LogInformation("Tonregal gestartet, Library {Library}, Datenbank {Database}", options.Library, db.Database.GetDbConnection().DataSource);
 }
 
@@ -66,7 +75,7 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi().MapIngestApi().MapSettingsApi();
+app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi().MapIngestApi().MapSettingsApi().MapSmartPlaylistsApi();
 app.MapHub<StatusHub>("/hub");
 app.MapFallbackToFile("index.html");
 
