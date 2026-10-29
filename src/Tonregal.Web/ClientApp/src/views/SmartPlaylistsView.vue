@@ -12,6 +12,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import { api, type KeyCount, type SmartPlaylist, type SmartPlaylistInput, type SmartPlaylistSort } from '@/api'
 import { allKeys, compatibleKeys } from '@/keys'
+import { usePlayerStore } from '@/stores/player'
 
 /** Regeln für Navidromes Smart Playlists; Tonregal schreibt die .nsp-Dateien, Navidrome füllt die Listen. */
 const playlists = ref<SmartPlaylist[]>([])
@@ -22,6 +23,35 @@ const editing = ref<{ id: number | null; input: SmartPlaylistInput } | null>(nul
 const saving = ref(false)
 const confirmingDelete = ref<number | null>(null)
 const shownNsp = ref<number | null>(null)
+const player = usePlayerStore()
+/** Playlist, deren Stücke gerade geholt werden. */
+const loading = ref<number | null>(null)
+/** Hinweis je Playlist nach dem Abspielen, z. B. wenn Navidrome sie noch nicht kannte. */
+const notices = ref<Record<number, string>>({})
+
+/** Holt die aktuelle Auswertung und spielt sie ab oder hängt sie an die Warteschlange. */
+async function play(p: SmartPlaylist, append = false) {
+  loading.value = p.id
+  error.value = null
+  try {
+    const { fromNavidrome, items } = await api.smartPlaylistTracks(p.id)
+    const notice = !items.length
+      ? 'Keine passenden Stücke.'
+      : fromNavidrome
+        ? ''
+        : p.neverPlayed
+          ? 'Navidrome kennt die Liste noch nicht, deshalb ohne „nie gehört“ ausgewählt.'
+          : 'Navidrome kennt die Liste noch nicht, Tonregal hat selbst ausgewählt.'
+    notices.value = { ...notices.value, [p.id]: notice }
+    if (!items.length) return
+    if (append) player.enqueue(items)
+    else player.play(items)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading.value = null
+  }
+}
 
 const sorts: { value: SmartPlaylistSort; label: string }[] = [
   { value: 'Random', label: 'Zufällig' },
@@ -136,9 +166,9 @@ const sortLabel = (sort: SmartPlaylistSort) => sorts.find((s) => s.value === sor
       <Button v-if="!editing" label="Neue Smart Playlist" icon="pi pi-plus" @click="edit(null)" />
     </div>
     <p class="m-0 text-surface-500">
-      Tonregal schreibt die Regeln als <code>.nsp</code>-Dateien nach <code>Library/Playlists</code>. Navidrome liest sie beim nächsten
-      Scan ein und füllt die Listen selbst, auch in Amperfy und anderen Apps. „Nie gehört“ kennt nur Navidrome, die Anzahl hier zählt
-      diese Regel nicht mit.
+      Eine Smart Playlist ist eine Regel, keine feste Liste: „Abspielen“ holt jedes Mal die Stücke, die gerade passen, und spielt sie
+      im Player unten. Ausgewertet wird in Navidrome, das die Regeln als <code>.nsp</code>-Datei aus <code>Library/Playlists</code>
+      liest; kennt es eine Liste noch nicht, wählt Tonregal selbst aus. „Nie gehört“ zählt in der Anzahl hier nicht mit.
     </p>
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
@@ -239,12 +269,23 @@ const sortLabel = (sort: SmartPlaylistSort) => sorts.find((s) => s.value === sor
           >{{ p.path }}
 
 {{ p.nsp }}</pre>
+          <p v-if="notices[p.id]" class="m-0 text-sm text-surface-500" data-testid="notice">{{ notices[p.id] }}</p>
           <div v-if="confirmingDelete === p.id" class="flex flex-wrap items-center gap-2">
             <Message severity="warn" :closable="false">Löscht die Datei und die Playlist in Navidrome.</Message>
             <Button label="Ja, löschen" severity="danger" @click="remove(p.id)" />
             <Button label="Abbrechen" text @click="confirmingDelete = null" />
           </div>
           <div v-else class="flex flex-wrap gap-2">
+            <Button label="Abspielen" icon="pi pi-play" :loading="loading === p.id" data-testid="play" @click="play(p)" />
+            <Button
+              icon="pi pi-list-check"
+              text
+              rounded
+              aria-label="An die Warteschlange hängen"
+              title="An die Warteschlange hängen"
+              :disabled="loading === p.id"
+              @click="play(p, true)"
+            />
             <Button label="Bearbeiten" icon="pi pi-pencil" severity="secondary" :disabled="!!editing" @click="edit(p)" />
             <Button
               :label="shownNsp === p.id ? 'Datei verbergen' : 'Datei ansehen'"

@@ -20,4 +20,11 @@ public interface INavidromeClient
     /// auch wenn die Datei weg ist. <c>false</c>, wenn Navidrome sie nicht kennt oder nicht erreichbar ist.
     /// </summary>
     Task<bool> DeletePlaylistAsync(string libraryPath, CancellationToken ct);
+
+    /// <summary>
+    /// Dateien der aus einer Datei eingelesenen Playlist in Navidromes Reihenfolge, als Pfade relativ zur Library.
+    /// Navidrome wertet eine Smart Playlist beim Abruf neu aus. <c>null</c>, wenn Navidrome sie (noch) nicht kennt
+    /// oder nicht erreichbar ist.
+    /// </summary>
+    Task<IReadOnlyList<string>?> PlaylistFilesAsync(string libraryPath, CancellationToken ct);
 }

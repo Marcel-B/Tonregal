@@ -218,6 +218,9 @@ nächsten Scan ein (Besitzer ist der erste Admin) und füllt sie selbst, sie ers
 Der Dateiname hängt an der ID, ein Umbenennen ändert nur den Namen in Navidrome. Beim Löschen entfernt
 Tonregal die Datei und, mit Navidrome-Zugang aus `appsettings.Production.json`, auch die Playlist in
 Navidrome, die sonst stehen bliebe. „Neu (30 Tage)“ und „Nie gehört“ sind zum Start angelegt.
+*Abspielen* holt die Stücke, die gerade passen, von Navidrome (`getPlaylist`, das die Liste dabei neu
+auswertet) und legt sie in den Player; kennt Navidrome die Liste noch nicht, wählt Tonregal selbst aus, dann
+ohne „nie gehört“.
 
 Am iPhone in Safari *Teilen → Zum Home-Bildschirm* wählen, dann startet Tonregal wie eine App.
 

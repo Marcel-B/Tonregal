@@ -183,7 +183,14 @@ public sealed class SmartPlaylists(
     /// <summary>Dieselben Regeln gegen Tonregals Bibliothek; „neu“ zählt hier ab der Übernahme der ersten Datei.</summary>
     private async Task<int> MatchingAsync(SmartPlaylist p, CancellationToken ct)
     {
-        var tracks = db.Tracks.AsQueryable();
+        var count = await Filtered(p).CountAsync(ct);
+        return p.Limit is { } limit ? Math.Min(count, limit) : count;
+    }
+
+    /// <summary>Alle Regeln außer „nie gehört“, die nur Navidrome auswerten kann.</summary>
+    private IQueryable<Track> Filtered(SmartPlaylist p)
+    {
+        var tracks = db.Tracks.Where(t => t.Files.Any());
         if (p.BpmMin is not null || p.BpmMax is not null)
         {
             var (min, max) = (p.BpmMin ?? 1, p.BpmMax ?? 999);
@@ -208,9 +215,55 @@ public sealed class SmartPlaylists(
             tracks = tracks.Where(t => t.Files.Any(f => f.AddedAt >= since));
         }
 
-        var count = await tracks.CountAsync(ct);
-        return p.Limit is { } limit ? Math.Min(count, limit) : count;
+        return tracks;
     }
+
+    public async Task<SmartPlaylistTracks?> TracksAsync(int id, CancellationToken ct)
+    {
+        if (await db.SmartPlaylists.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct) is not { } playlist)
+            return null;
+
+        if (await navidrome.PlaylistFilesAsync(RelativePath(id), ct) is { } paths)
+        {
+            var files = await db.AudioFiles.AsNoTracking()
+                .Where(f => paths.Contains(f.Path))
+                .Include(f => f.Track).ThenInclude(t => t.Artists)
+                .Include(f => f.Track).ThenInclude(t => t.Album).ThenInclude(a => a.AlbumArtist)
+                .ToListAsync(ct);
+            var byPath = files.ToDictionary(f => f.Path, StringComparer.Ordinal);
+            // Eine Datei je Track, auch wenn Navidrome MP3 und FLAC desselben Stücks führt.
+            var items = paths.Where(byPath.ContainsKey).Select(p => Item(byPath[p])).DistinctBy(i => i.TrackId).ToList();
+            return new SmartPlaylistTracks(true, items);
+        }
+
+        var tracks = await Filtered(playlist)
+            .Include(t => t.Artists)
+            .Include(t => t.Album).ThenInclude(a => a.AlbumArtist)
+            .Include(t => t.Files)
+            .AsNoTracking()
+            .ToListAsync(ct);
+        IEnumerable<Track> ordered = playlist.Sort switch
+        {
+            SmartPlaylistSort.Newest => tracks.OrderByDescending(t => t.Files.Min(f => f.AddedAt)),
+            SmartPlaylistSort.Bpm => tracks.OrderBy(t => t.Bpm ?? double.MaxValue),
+            SmartPlaylistSort.Title => tracks.OrderBy(t => t.Title, StringComparer.CurrentCultureIgnoreCase),
+            SmartPlaylistSort.Artist => tracks.OrderBy(t => ArtistName(t), StringComparer.CurrentCultureIgnoreCase),
+            _ => tracks.OrderBy(_ => Random.Shared.Next()),
+        };
+        var fallback = ordered.Take(playlist.Limit ?? MaxFallbackTracks)
+            .Select(t => Item(t.Files.OrderByDescending(f => f.Format == AudioFormat.Flac).ThenByDescending(f => f.Bitrate).First()))
+            .ToList();
+        return new SmartPlaylistTracks(false, fallback);
+    }
+
+    /// <summary>Obergrenze, wenn Tonregal ohne Höchstzahl selbst auswertet; mehr braucht keine Warteschlange.</summary>
+    private const int MaxFallbackTracks = 1000;
+
+    private static string ArtistName(Track t) =>
+        t.Artists.Count > 0 ? string.Join(", ", t.Artists.Select(a => a.Name)) : t.Album.AlbumArtist.Name;
+
+    private static PlaylistItem Item(AudioFile f) =>
+        new(f.Id, f.TrackId, f.Track.Title, ArtistName(f.Track), f.Track.Album.Title, f.Track.AlbumId, f.Track.DurationMs);
 
     private async Task ApplyAsync(SmartPlaylist playlist, SmartPlaylistInput input, CancellationToken ct)
     {

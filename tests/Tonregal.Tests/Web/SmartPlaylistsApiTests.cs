@@ -155,29 +155,89 @@ public sealed class SmartPlaylistsApiTests : IDisposable
         Assert.Equal([new KeyCount("Am", 2), new KeyCount("C", 1), new KeyCount("F#m", 1)], keys!);
     }
 
-    private void CreateNavidromeDatabase(string playlistFile)
+    private void CreateNavidromeDatabase(string playlistFile, params (string Id, string Path)[] songs)
     {
         var database = Path.Combine(_library.MusicRoot, "navidrome", "navidrome.db");
         Directory.CreateDirectory(Path.GetDirectoryName(database)!);
         using var connection = new SqliteConnection($"Data Source={database};Pooling=False");
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "CREATE TABLE playlist (id TEXT PRIMARY KEY, path TEXT); INSERT INTO playlist VALUES ('pl-1', $path)";
+        command.CommandText = """
+            CREATE TABLE playlist (id TEXT PRIMARY KEY, path TEXT); INSERT INTO playlist VALUES ('pl-1', $path);
+            CREATE TABLE media_file (id TEXT PRIMARY KEY, path TEXT);
+            """;
         command.Parameters.AddWithValue("$path", playlistFile);
         command.ExecuteNonQuery();
+        foreach (var (id, path) in songs)
+        {
+            using var insert = connection.CreateCommand();
+            insert.CommandText = "INSERT INTO media_file VALUES ($id, $path)";
+            insert.Parameters.AddWithValue("$id", id);
+            insert.Parameters.AddWithValue("$path", path);
+            insert.ExecuteNonQuery();
+        }
+    }
+
+    private async Task<(int Id, string Path, string Title)[]> FilesAsync()
+    {
+        await using var scope = _factory!.Services.CreateAsyncScope();
+        return [.. (await scope.ServiceProvider.GetRequiredService<TonregalDbContext>().AudioFiles
+                .Select(f => new { f.Id, f.Path, f.Track.Title }).ToListAsync(Ct))
+            .OrderBy(f => f.Title).Select(f => (f.Id, f.Path, f.Title))];
+    }
+
+    [Fact]
+    public async Task Spielt_ohne_Navidrome_nach_Tonregals_eigener_Auswertung()
+    {
+        var client = Client();
+        await AnalyzedAsync();
+        var created = await (await client.PostAsJsonAsync("/api/smart-playlists", Input("Moll", keys: ["Am"], sort: "Bpm"), Json, Ct))
+            .Content.ReadFromJsonAsync<SmartPlaylistInfo>(Json, Ct);
+
+        var tracks = await client.GetFromJsonAsync<SmartPlaylistTracks>($"/api/smart-playlists/{created!.Id}/tracks", Json, Ct);
+
+        var files = await FilesAsync();
+        Assert.False(tracks!.FromNavidrome);
+        Assert.Equal([files[0].Id, files[2].Id], tracks.Items.Select(i => i.FileId));
+        Assert.Equal(files[0].Title, tracks.Items[0].Title);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/smart-playlists/99/tracks", Ct)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Spielt_Navidromes_Auswertung_in_ihrer_Reihenfolge()
+    {
+        var client = Client(navidrome: true);
+        await AnalyzedAsync();
+        var files = await FilesAsync();
+        // Ein Pfad absolut, einer relativ: Navidrome speichert je nach Version beides.
+        CreateNavidromeDatabase(Path.Combine(_library.Library, "Playlists", "tonregal-2.nsp"),
+            ("nd-a", Path.Combine(_library.Library, files[3].Path)), ("nd-b", files[1].Path), ("nd-x", "Fremd/gibt es nicht.mp3"));
+        _navidrome.Playlist = ["nd-b", "nd-x", "nd-a"];
+
+        var tracks = await client.GetFromJsonAsync<SmartPlaylistTracks>("/api/smart-playlists/2/tracks", Json, Ct);
+
+        Assert.True(tracks!.FromNavidrome);
+        Assert.Equal([files[1].Id, files[3].Id], tracks.Items.Select(i => i.FileId));
+        Assert.Equal("/rest/getPlaylist", Assert.Single(_navidrome.Requests).AbsolutePath);
     }
 
     private sealed class FakeNavidrome : HttpMessageHandler
     {
         public List<Uri> Requests { get; } = [];
 
+        /// <summary>Song-IDs, die <c>getPlaylist</c> liefert.</summary>
+        public string[] Playlist { get; set; } = [];
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Requests.Add(request.RequestUri!);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("""{"subsonic-response":{"status":"ok","version":"1.16.1"}}""", null, "application/json"),
-            });
+            var body = request.RequestUri!.AbsolutePath == "/rest/getPlaylist"
+                ? JsonSerializer.Serialize(new Dictionary<string, object>
+                {
+                    ["subsonic-response"] = new { status = "ok", playlist = new { id = "pl-1", entry = Playlist.Select(id => new { id }) } },
+                })
+                : """{"subsonic-response":{"status":"ok","version":"1.16.1"}}""";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, null, "application/json") });
         }
     }
 }

@@ -316,6 +316,23 @@ export interface SmartPlaylist extends SmartPlaylistInput {
   nsp: string
 }
 
+/** Felder wie QueueItem im Player-Store. */
+export interface PlaylistItem {
+  fileId: number
+  trackId: number
+  title: string
+  artist: string
+  album: string
+  albumId: number
+  durationMs: number
+}
+
+export interface SmartPlaylistTracks {
+  /** false: Navidrome kannte die Liste nicht, Tonregal hat ohne „nie gehört“ ausgewählt. */
+  fromNavidrome: boolean
+  items: PlaylistItem[]
+}
+
 export interface KeyCount {
   key: string
   tracks: number
@@ -376,6 +393,7 @@ export const api = {
   /** Neuer Key für die Quelle; der alte gilt danach nicht mehr. */
   regenerateIngestKey: (source: string) => request<IngestKeyInfo>('POST', `/settings/ingest/${encodeURIComponent(source)}/key`),
   smartPlaylists: () => get<SmartPlaylist[]>('/smart-playlists'),
+  smartPlaylistTracks: (id: number) => get<SmartPlaylistTracks>(`/smart-playlists/${id}/tracks`),
   smartPlaylistKeys: () => get<KeyCount[]>('/smart-playlists/keys'),
   createSmartPlaylist: (input: SmartPlaylistInput) => request<SmartPlaylist>('POST', '/smart-playlists', input),
   updateSmartPlaylist: (id: number, input: SmartPlaylistInput) => request<SmartPlaylist>('PUT', `/smart-playlists/${id}`, input),
