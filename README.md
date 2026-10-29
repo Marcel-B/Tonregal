@@ -233,6 +233,12 @@ tonregal-log [tonregal|navidrome]
 tonregal-restart [tonregal|navidrome]
 ```
 
+## iPhone-App
+
+Unter `apple/` liegt ein nativer Player (SwiftUI) für iPhone und iPad, der Hintergrund-Wiedergabe und Sperrbildschirm
+zuverlässiger kann als die PWA. Einrichtung, TestFlight und Aufbau stehen in [apple/README.md](apple/README.md). Die App
+holt ihre Albenliste über `GET /api/library/albums`.
+
 ## Lizenz
 
 [GNU Affero General Public License v3.0 oder später](LICENSE). Navidrome, Chromaprint, ffmpeg,

@@ -35,3 +35,28 @@ jobs:
         run: |
           dotnet build -c Release
           dotnet test -c Release --no-build
+
+  apple:
+    name: iPhone-App (Swift)
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apple
+    steps:
+      - uses: actions/checkout@v5
+      - name: Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_*.app | grep -iv beta | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - name: TonregalKit testen
+        working-directory: apple/TonregalKit
+        run: swift test
+      - name: App für den Simulator bauen (unsigniert)
+        run: |
+          xcodebuild build -project Tonregal.xcodeproj -scheme Tonregal -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO \
+            > "$RUNNER_TEMP/build.log" 2>&1 || { grep -E "error:" "$RUNNER_TEMP/build.log" | sort -u | head -50; tail -80 "$RUNNER_TEMP/build.log"; exit 1; }
+          grep -E "warning:.*\.swift" "$RUNNER_TEMP/build.log" | sort -u | head -30 || true
+          grep -E "BUILD SUCCEEDED" "$RUNNER_TEMP/build.log"

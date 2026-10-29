@@ -13,6 +13,9 @@ public sealed record ArtistSummary(int Id, string Name, string SortName, int Alb
 
 public sealed record AlbumSummary(int Id, string Title, int? Year, AlbumKind Kind, int TrackCount);
 
+/// <summary>Ein Album samt Interpret, für die Albenliste der iPhone-App.</summary>
+public sealed record AlbumListItem(int Id, string Title, int? Year, AlbumKind Kind, int TrackCount, ArtistRef AlbumArtist);
+
 public sealed record ArtistDetail(int Id, string Name, IReadOnlyList<AlbumSummary> Albums);
 
 public sealed record ArtistRef(int Id, string Name);
@@ -51,6 +54,13 @@ public static class LibraryApi
                 .SingleOrDefaultAsync(ct);
             return artist is null ? TypedResults.NotFound() : TypedResults.Ok(artist);
         });
+
+        // Alle Alben, zuletzt übernommene zuerst (die Id wächst mit jedem Scan); die App blättert darin ohne Umweg über den Interpreten.
+        library.MapGet("/albums", async (TonregalDbContext db, CancellationToken ct) =>
+            await db.Albums
+                .OrderByDescending(a => a.Id)
+                .Select(a => new AlbumListItem(a.Id, a.Title, a.Year, a.Kind, a.Tracks.Count, new ArtistRef(a.AlbumArtist.Id, a.AlbumArtist.Name)))
+                .ToListAsync(ct));
 
         library.MapGet("/albums/{id:int}", async Task<IResult> (int id, TonregalDbContext db, IReleaseAligner aligner, CancellationToken ct) =>
         {

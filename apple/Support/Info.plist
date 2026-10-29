@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	Tonregal läuft auf oi-o-mat unter http://<Tailscale-IP>:5100, ohne TLS; Tailscale verschlüsselt die Strecke selbst.
+	App Transport Security ließe Klartext nur zu Namen im lokalen Netz zu, nicht zu einer 100.x-Adresse, daher die
+	allgemeine Ausnahme. Die App spricht ausschließlich mit der Adresse, die man selbst einträgt.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+</dict>
+</plist>
