@@ -4,6 +4,10 @@ using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Infrastructure.Persistence;
+using Tonregal.Web.Analysis;
+using Tonregal.Web.Backup;
+using Tonregal.Web.Inbox;
+using Tonregal.Web.Library;
 
 namespace Tonregal.Web.Api;
 
@@ -11,6 +15,9 @@ public sealed record HealthResponse(string Status, bool LibraryMounted, string V
 
 public sealed record LibraryStats(
     int Artists, int Albums, int Tracks, int Files, int OpenReviews, int OpenDuplicates, long LibraryBytes, int AnalyzedFiles);
+
+/// <summary>Was ein Neustart gerade abschneiden würde; <c>deploy/update-tonregal.sh</c> wartet, solange <see cref="Busy"/> gilt.</summary>
+public sealed record BusyResponse(bool Busy, IReadOnlyList<string> Reasons);
 
 public static class TonregalApi
 {
@@ -31,6 +38,23 @@ public static class TonregalApi
             await db.DuplicateGroups.CountAsync(g => g.Decision == Domain.Entities.DuplicateDecision.Open, ct),
             await db.AudioFiles.SumAsync(f => f.SizeBytes, ct),
             (await analysis.CountAsync(ct)).Analyzed));
+
+        api.MapGet("/busy", (LibraryWriteLock writeLock, InboxService inbox, LibraryScanService scans, AnalysisService analysis, BackupService backup) =>
+        {
+            var reasons = new List<string>();
+            if (writeLock.Holder is { } holder)
+                reasons.Add(holder);
+            if (inbox.Status.Running)
+                reasons.Add("Inbox");
+            if (scans.Status.Running)
+                reasons.Add("Scan");
+            if (analysis.Status.Running)
+                reasons.Add("Analyse");
+            if (backup.Status.Running)
+                reasons.Add("Backup");
+            var distinct = reasons.Distinct().ToList();
+            return new BusyResponse(distinct.Count > 0, distinct);
+        });
 
         return api;
     }

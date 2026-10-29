@@ -44,3 +44,8 @@ tonregal-restart() {
 tonregal-backup-now() {
   _tonregal_run "curl -fsS -X POST http://\$(tailscale ip -4 | head -n1):5100/api/backup/run && echo"
 }
+
+# Automatische Deploys: tonregal-update [status|on|off|run]
+tonregal-update() {
+  _tonregal_run "\$HOME/repos/Tonregal/deploy/update-tonregal.sh ${1:-status}"
+}
