@@ -49,6 +49,18 @@ final class ServerAddressTests: XCTestCase {
         XCTAssertEqual(ServerAddress.parse("https://oi-o-mat.tail1234.ts.net")?.absoluteString, "https://oi-o-mat.tail1234.ts.net")
     }
 
+    func testFullUrlGetsNoDefaultPort() {
+        XCTAssertEqual(ServerAddress.parse("https://oi-o-mat.tail6105c0.ts.net")?.absoluteString, "https://oi-o-mat.tail6105c0.ts.net")
+        XCTAssertEqual(ServerAddress.parse("https://oi-o-mat.tail6105c0.ts.net/")?.absoluteString, "https://oi-o-mat.tail6105c0.ts.net")
+        XCTAssertEqual(ServerAddress.parse("HTTPS://oi-o-mat.tail6105c0.ts.net/albums/7")?.absoluteString, "https://oi-o-mat.tail6105c0.ts.net")
+        XCTAssertEqual(ServerAddress.parse("http://oi-o-mat")?.absoluteString, "http://oi-o-mat", "mit Schema kein Port 5100")
+        XCTAssertEqual(ServerAddress.parse("http://oi-o-mat:5100")?.absoluteString, "http://oi-o-mat:5100")
+    }
+
+    func testDefaultServerParsesToItself() {
+        XCTAssertEqual(ServerAddress.parse(ServerAddress.defaultServer)?.absoluteString, "https://oi-o-mat.tail6105c0.ts.net")
+    }
+
     func testDropsPathOfAWebPage() {
         XCTAssertEqual(ServerAddress.parse("http://oi-o-mat:5100/albums/7?x=1")?.absoluteString, "http://oi-o-mat:5100")
     }
@@ -62,6 +74,9 @@ final class ServerAddressTests: XCTestCase {
         let client = TonregalClient(server: ServerAddress.parse("oi-o-mat")!)
         XCTAssertEqual(client.streamURL(file: 5).absoluteString, "http://oi-o-mat:5100/api/player/files/5/stream")
         XCTAssertEqual(client.coverURL(album: 9).absoluteString, "http://oi-o-mat:5100/api/library/albums/9/cover")
+
+        let served = TonregalClient(server: ServerAddress.parse(ServerAddress.defaultServer)!)
+        XCTAssertEqual(served.streamURL(file: 5).absoluteString, "https://oi-o-mat.tail6105c0.ts.net/api/player/files/5/stream")
     }
 }
 

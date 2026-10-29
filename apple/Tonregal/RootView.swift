@@ -71,7 +71,7 @@ private struct PlayerInset: ViewModifier {
 
 struct SetupView: View {
     @Environment(AppModel.self) private var model
-    @State private var address = ""
+    @State private var address = ServerAddress.defaultServer
     @State private var connecting = false
     @State private var error: String?
 
@@ -79,7 +79,7 @@ struct SetupView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("oi-o-mat oder 100.x.y.z", text: $address)
+                    TextField(ServerAddress.defaultServer, text: $address)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
@@ -88,7 +88,7 @@ struct SetupView: View {
                 } header: {
                     Text("Server")
                 } footer: {
-                    Text("Die Adresse von Tonregal im Tailnet, wie im Browser. Ohne Angabe gelten http:// und Port 5100. Tailscale muss auf dem iPhone verbunden sein.")
+                    Text("Die Adresse von Tonregal im Tailnet, wie im Browser: Tailscale Serve auf oi-o-mat, mit https. Tailscale muss auf dem iPhone verbunden sein.")
                 }
                 if let error {
                     Section {

@@ -25,7 +25,7 @@ final class AppModel {
     /// Prüft die Adresse mit `GET /api/health`, bevor sie gespeichert wird.
     func connect(_ text: String) async throws -> Health {
         guard let url = ServerAddress.parse(text) else {
-            throw TonregalError("Das ist keine Adresse. Beispiel: oi-o-mat oder 100.64.0.5")
+            throw TonregalError("Das ist keine Adresse. Beispiel: \(ServerAddress.defaultServer)")
         }
         let health = try await TonregalClient(server: url).health()
         if url != server {

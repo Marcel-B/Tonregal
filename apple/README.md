@@ -11,10 +11,12 @@ CarPlay, Playlists.
 
 ## Verbinden
 
-Tailscale muss auf dem iPhone laufen. Beim ersten Start die Adresse von Tonregal eintragen, wie im Browser:
-`oi-o-mat` (MagicDNS) oder die Tailscale-IP `100.x.y.z`. Ohne Angabe ergänzt die App `http://` und Port `5100`.
-Weil Tonregal ohne TLS läuft (Tailscale verschlüsselt die Strecke), erlaubt die App Klartext-HTTP
-(`Support/Info.plist`); für TestFlight intern ist das kein Problem.
+Tailscale muss auf dem iPhone laufen. Tonregal lauscht auf oi-o-mat nur auf `localhost:5100`, Tailscale Serve
+veröffentlicht es im Tailnet unter `https://oi-o-mat.tail6105c0.ts.net`. Diese Adresse steht beim ersten Start schon
+im Feld. Eine vollständige URL bleibt, wie sie ist; nur ein bloßer Hostname oder eine IP bekommt `http://` und Port
+`5100` (für einen Entwicklungsserver). Für solche http-Adressen erlaubt die App weiterhin Klartext
+(`Support/Info.plist`). Wer noch die alte Adresse `http://<Tailscale-IP>:5100` gespeichert hat, trennt die Verbindung
+und trägt die neue ein.
 
 ## Aufbau
 

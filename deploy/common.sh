@@ -8,6 +8,9 @@ LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 # Festplattenvollzugriff-Freigabe für das Programm hilft dabei nicht. Deshalb liegen nur diese
 # kleinen Dienst-Logs intern, alles andere bleibt auf der T7.
 SERVICE_LOGS="$HOME/Library/Logs/Tonregal"
+# Tonregal lauscht nur auf localhost; Tailscale Serve (443, TLS) leitet an diese Adresse weiter.
+TONREGAL_LOCAL_URL="http://localhost:5100"
+TONREGAL_PUBLIC_URL="https://oi-o-mat.tail6105c0.ts.net"
 DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 require_mount() {
@@ -19,6 +22,7 @@ require_mount() {
   touch "$MUSIC_ROOT/.tonregal-mount"
 }
 
+# Für Navidrome, das auf der Tailscale-IP lauscht (navidrome.toml, Tonregal__Navidrome__Url).
 tailscale_ip() {
   if [[ -n "${TAILSCALE_IP:-}" ]]; then
     echo "$TAILSCALE_IP"

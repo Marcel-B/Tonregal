@@ -87,7 +87,10 @@ Amperfy (iPhone) bzw. play:Sub (Mac) mit `http://oi-o-mat.tail6105c0.ts.net:4533
 
 Baut die App inklusive SPA self-contained für `osx-arm64`, kopiert sie nach `app/` (Datenbank und
 `appsettings.Production.json` bleiben erhalten) und richtet den launchd-Dienst
-`de.bvelop.tonregal` auf Port 5100 ein. Eigene Einstellungen und API-Keys gehören in
+`de.bvelop.tonregal` auf Port 5100 ein. Das Backend lauscht nur auf `localhost:5100`; nach außen
+veröffentlicht es Tailscale Serve im Tailnet unter `https://oi-o-mat.tail6105c0.ts.net` (Port 443, TLS),
+das ist der einzige Zugang, auch für die iPhone-App. Am Ende prüft das Script `http://localhost:5100/api/health`
+und bricht mit Fehler ab, wenn Tonregal nicht antwortet. Eigene Einstellungen und API-Keys gehören in
 `/Volumes/T7/Musik/app/appsettings.Production.json`, nie ins Repo.
 
 **Zugriff auf die T7:** launchd selbst darf keine Dateien auf externen Volumes öffnen, deshalb
@@ -206,7 +209,7 @@ sich auf der Seite nicht ändern:
 ```
 
 ```bash
-curl -H "X-Api-Key: $KEY" http://oi-o-mat.tail6105c0.ts.net:5100/api/ingest \
+curl -H "X-Api-Key: $KEY" https://oi-o-mat.tail6105c0.ts.net/api/ingest \
   -F file=@track.flac -F cover=@cover.jpg \
   -F 'metadata={"externalId":"song-42","title":"Nachtfahrt","artist":"Tonwerk","album":"Projekt Nacht","year":2026,"track":3,"genre":"Synthwave","bpm":128,"key":"Am"}'
 ```

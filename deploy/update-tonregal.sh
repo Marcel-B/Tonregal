@@ -85,7 +85,7 @@ round() {
   # Antwortet Tonregal nicht, gibt es nichts abzuschneiden. Eine alte Version ohne /api/busy
   # (404) zählt ebenso als frei, das betrifft nur den ersten automatischen Deploy.
   local url busy
-  url="http://$(tailscale_ip):5100"
+  url="$TONREGAL_LOCAL_URL"
   if busy="$(curl -fsS --max-time 5 "$url/api/busy" 2>/dev/null)" && grep -q '"busy":true' <<<"$busy"; then
     if [[ "$(cat "$STATE/waiting" 2>/dev/null)" != "$remote" ]]; then
       log "$(short "$remote") wartet: Tonregal ist beschäftigt ($busy)."
