@@ -33,9 +33,12 @@
   <Target Name="BuildClientApp" BeforeTargets="BeforeBuild" Condition="'$(_IsPublishing)' == 'true' And '$(SkipClientApp)' != 'true'">
     <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm ci" />
     <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm run build" />
-    <!-- wwwroot wurde bei der Auswertung des Projekts noch mit dem alten Stand eingelesen. -->
+    <!-- wwwroot wurde bei der Auswertung des Projekts noch mit dem alten Stand eingelesen. Ein Remove mit
+         Platzhalter würde im Target gegen die Platte aufgelöst und die von Vite gelöschten Dateien gerade
+         nicht treffen, deshalb über die Items selbst. -->
     <ItemGroup>
-      <Content Remove="wwwroot/**" />
+      <_StaleWwwroot Include="@(Content)" Condition="$([System.String]::Copy('%(Content.Identity)').Replace('\','/').StartsWith('wwwroot/'))" />
+      <Content Remove="@(_StaleWwwroot)" />
       <Content Include="wwwroot/**" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
