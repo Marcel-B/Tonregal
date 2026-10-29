@@ -18,7 +18,7 @@ _tonregal_run() {
 tonregal-status() {
   _tonregal_run "launchctl print gui/\$(id -u)/de.bvelop.tonregal 2>/dev/null | grep -E 'state|pid' | head -2;
     launchctl print gui/\$(id -u)/org.navidrome.server 2>/dev/null | grep -E 'state|pid' | head -2;
-    curl -fsS http://\$(tailscale ip -4 | head -n1):5100/api/health && echo"
+    curl -fsS http://localhost:5100/api/health && echo"
 }
 
 tonregal-log() {
@@ -42,7 +42,7 @@ tonregal-restart() {
 
 # Startet sofort ein Backup nach Nextcloud (sonst nachts um 03:00).
 tonregal-backup-now() {
-  _tonregal_run "curl -fsS -X POST http://\$(tailscale ip -4 | head -n1):5100/api/backup/run && echo"
+  _tonregal_run "curl -fsS -X POST http://localhost:5100/api/backup/run && echo"
 }
 
 # Automatische Deploys: tonregal-update [status|on|off|run]

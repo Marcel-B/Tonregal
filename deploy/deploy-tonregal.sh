@@ -37,18 +37,36 @@ rsync -a --delete \
   --exclude 'appsettings.Production.json' \
   "$staging/" "$app/"
 
-ip="$(tailscale_ip)"
+# Die Tailscale-IP nur noch für Navidromes Adresse; Tonregal selbst lauscht auf localhost.
+navidrome_ip="$(tailscale_ip)"
 brew_prefix="$(brew --prefix)"
 plist="$staging/de.bvelop.tonregal.plist"
 render_template "$DEPLOY_DIR/launchd/de.bvelop.tonregal.plist.template" "$plist" \
-  MUSIC_ROOT="$MUSIC_ROOT" TAILSCALE_IP="$ip" BREW_PREFIX="$brew_prefix" \
+  MUSIC_ROOT="$MUSIC_ROOT" TAILSCALE_IP="$navidrome_ip" BREW_PREFIX="$brew_prefix" \
   HOME="$HOME" SERVICE_LOGS="$SERVICE_LOGS"
 plutil -lint "$plist" >/dev/null
 install_agent de.bvelop.tonregal "$plist" "$app/Tonregal.Web" "$SERVICE_LOGS/tonregal.stdout.log"
 
-# Für update-tonregal.sh: Was hier ausgerollt wurde, muss es nicht noch einmal tun.
+# Erst fertig, wenn Tonregal antwortet; der Start wendet Migrationen an und braucht ein paar Sekunden.
+echo "==> Health-Check $TONREGAL_LOCAL_URL/api/health"
+healthy=false
+for _ in {1..30}; do
+  if curl -fsS --max-time 5 "$TONREGAL_LOCAL_URL/api/health" >/dev/null 2>&1; then
+    healthy=true
+    break
+  fi
+  sleep 2
+done
+if [[ "$healthy" != true ]]; then
+  echo "Fehler: $TONREGAL_LOCAL_URL/api/health antwortet nicht." >&2
+  tail -n 20 "$SERVICE_LOGS/tonregal.stdout.log" >&2 2>/dev/null || true
+  exit 1
+fi
+
+# Für update-tonregal.sh: Was hier ausgerollt wurde, muss es nicht noch einmal tun. Erst nach dem
+# Health-Check, damit ein Deploy, nach dem Tonregal nicht antwortet, nicht als ausgerollt gilt.
 mkdir -p "$MUSIC_ROOT/update"
 git -C "$repo" rev-parse HEAD > "$MUSIC_ROOT/update/deployed"
 
 echo
-echo "Tonregal läuft unter http://$ip:5100"
+echo "Tonregal läuft unter $TONREGAL_PUBLIC_URL (Tailscale Serve → $TONREGAL_LOCAL_URL)"

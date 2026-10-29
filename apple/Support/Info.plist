@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-	Tonregal läuft auf oi-o-mat unter http://<Tailscale-IP>:5100, ohne TLS; Tailscale verschlüsselt die Strecke selbst.
-	App Transport Security ließe Klartext nur zu Namen im lokalen Netz zu, nicht zu einer 100.x-Adresse, daher die
-	allgemeine Ausnahme. Die App spricht ausschließlich mit der Adresse, die man selbst einträgt.
+	Tonregal lauscht auf oi-o-mat nur auf localhost:5100; Tailscale Serve veröffentlicht es im Tailnet unter
+	https://oi-o-mat.tail6105c0.ts.net (Port 443, TLS mit Tailscales Zertifikat). Dafür braucht es keine Ausnahme.
+	Die allgemeine Ausnahme bleibt nur für eine selbst eingetragene http-Adresse (etwa ein Entwicklungsserver unter
+	einer 100.x-Adresse, die App Transport Security nicht als lokales Netz gilt). Die App spricht ausschließlich mit
+	der Adresse, die man selbst einträgt.
 -->
 <plist version="1.0">
 <dict>

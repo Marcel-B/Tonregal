@@ -12,14 +12,16 @@
   <string>@@HOME@@</string>
   <key>EnvironmentVariables</key>
   <dict>
+    <!-- Nur localhost: Tailscale Serve veröffentlicht Tonregal unter https://oi-o-mat.tail6105c0.ts.net. -->
     <key>ASPNETCORE_URLS</key>
-    <string>http://@@TAILSCALE_IP@@:5100</string>
+    <string>http://localhost:5100</string>
     <key>ASPNETCORE_CONTENTROOT</key>
     <string>@@MUSIC_ROOT@@/app</string>
     <key>ASPNETCORE_ENVIRONMENT</key>
     <string>Production</string>
     <key>Tonregal__MusicRoot</key>
     <string>@@MUSIC_ROOT@@</string>
+    <!-- Navidrome lauscht weiter auf der Tailscale-IP (navidrome.toml), Amperfy und play:Sub sprechen es direkt an. -->
     <key>Tonregal__Navidrome__Url</key>
     <string>http://@@TAILSCALE_IP@@:4533</string>
     <key>PATH</key>
