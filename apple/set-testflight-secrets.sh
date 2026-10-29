@@ -39,14 +39,29 @@ ask ASC_ISSUER_ID "Issuer-ID (UUID über der Key-Liste)" '^[0-9a-fA-F-]{36}$'
 
 while true; do
   read -r -e -p "Pfad zur AuthKey_<id>.p8 (z. B. ~/Downloads/AuthKey_XXXX.p8): " key
+  # Reingezogene Dateien kommen mit Anführungszeichen, maskierten Leerzeichen oder einem Leerzeichen am Ende.
+  key="${key#"${key%%[![:space:]]*}"}"; key="${key%"${key##*[![:space:]]}"}"
+  key="${key#[\"\']}"; key="${key%[\"\']}"; key="${key//\\ / }"
   [[ -z "$key" ]] && { echo "  ASC_KEY_P8 bleibt, wie es ist."; break; }
   key="${key/#\~/$HOME}"
-  if [[ -f "$key" ]] && grep -q "BEGIN PRIVATE KEY" "$key"; then
-    gh secret set ASC_KEY_P8 --repo "$repo" < "$key"
-    echo "  ASC_KEY_P8 gesetzt."
-    break
+  if [[ ! -e "$key" ]]; then
+    echo "  Datei nicht gefunden: $key"
+    continue
   fi
-  echo "  Keine .p8-Datei mit privatem Schlüssel gefunden, nochmal."
+  # macOS verweigert dem Terminal ohne Freigabe den Zugriff auf Downloads, Dokumente und Schreibtisch.
+  if ! head -c 1 "$key" >/dev/null 2>&1; then
+    echo "  Die Datei ist da, aber nicht lesbar. Vermutlich fehlt dem Terminal die Freigabe für diesen Ordner"
+    echo "  (Systemeinstellungen → Datenschutz & Sicherheit → Dateien und Ordner). Oder die Datei vorher kopieren:"
+    echo "  cp \"$key\" ~/"
+    continue
+  fi
+  if ! grep -q "PRIVATE KEY" "$key"; then
+    echo "  Die Datei enthält keinen privaten Schlüssel. Erste Zeile: $(head -n 1 "$key" | cut -c 1-60)"
+    continue
+  fi
+  gh secret set ASC_KEY_P8 --repo "$repo" < "$key"
+  echo "  ASC_KEY_P8 gesetzt."
+  break
 done
 
 echo
