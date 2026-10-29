@@ -55,6 +55,83 @@ public sealed class NavidromeClient(
         }
     }
 
+    public async Task<IReadOnlyList<string>?> PlaylistFilesAsync(string libraryPath, CancellationToken ct)
+    {
+        if (await FindIdAsync("playlist", libraryPath, ct) is not { } playlistId)
+            return null;
+        List<string> songIds;
+        try
+        {
+            using var response = await http.GetAsync(Url("getPlaylist", $"id={Uri.EscapeDataString(playlistId)}&f=json"), ct);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            var root = json.RootElement.GetProperty("subsonic-response");
+            if (root.GetProperty("status").GetString() != "ok")
+            {
+                logger.LogWarning("Navidrome liefert Playlist {Id} nicht: {Body}", playlistId, Truncate(root.ToString()));
+                return null;
+            }
+
+            var playlist = root.GetProperty("playlist");
+            songIds = playlist.TryGetProperty("entry", out var entries)
+                ? [.. entries.EnumerateArray().Select(e => e.GetProperty("id").GetString()!)]
+                : [];
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            logger.LogWarning("Navidrome-Playlist {Id} nicht gelesen: {Message}", playlistId, e.Message);
+            return null;
+        }
+
+        if (songIds.Count == 0)
+            return [];
+        var paths = await SongPathsAsync(songIds, ct);
+        if (paths is null)
+            return null;
+        // Navidrome speichert je nach Version absolute oder zur Library relative Pfade.
+        var library = (Path.GetFullPath(tonregal.Value.Library).TrimEnd('/') + "/").Normalize(NormalizationForm.FormC);
+        return [.. songIds.Where(paths.ContainsKey)
+            .Select(id => paths[id].Normalize(NormalizationForm.FormC))
+            .Select(p => p.StartsWith(library, StringComparison.Ordinal) ? p[library.Length..] : p)];
+    }
+
+    private async Task<Dictionary<string, string>?> SongPathsAsync(IReadOnlyList<string> songIds, CancellationToken ct)
+    {
+        try
+        {
+            await using var connection = await OpenAsync(ct);
+            var paths = new Dictionary<string, string>(StringComparer.Ordinal);
+            // SQLite erlaubt nur begrenzt viele Parameter je Abfrage.
+            foreach (var chunk in songIds.Distinct().Chunk(500))
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = $"SELECT id, path FROM media_file WHERE id IN ({string.Join(", ", chunk.Select((_, i) => $"$i{i}"))})";
+                for (var i = 0; i < chunk.Length; i++)
+                    command.Parameters.AddWithValue($"$i{i}", chunk[i]);
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                    paths[reader.GetString(0)] = reader.GetString(1);
+            }
+
+            return paths;
+        }
+        catch (SqliteException e)
+        {
+            logger.LogWarning("navidrome.db nicht lesbar ({Database}): {Message}", Database, e.Message);
+            return null;
+        }
+    }
+
+    // Nicht ReadOnly: bei WAL-Datenbanken muss SQLite die -shm-Datei anfassen dürfen; gelesen wird nur.
+    private async Task<SqliteConnection> OpenAsync(CancellationToken ct)
+    {
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = Database, Mode = SqliteOpenMode.ReadWrite, Pooling = false, DefaultTimeout = 5,
+        }.ToString());
+        await connection.OpenAsync(ct);
+        return connection;
+    }
+
     /// <param name="table"><c>media_file</c> oder <c>playlist</c>, beide mit Spalten <c>id</c> und <c>path</c>.</param>
     private async Task<string?> FindIdAsync(string table, string libraryPath, CancellationToken ct)
     {
@@ -67,12 +144,7 @@ public sealed class NavidromeClient(
             .Distinct()];
         try
         {
-            // Nicht ReadOnly: bei WAL-Datenbanken muss SQLite die -shm-Datei anfassen dürfen; gelesen wird nur.
-            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
-            {
-                DataSource = Database, Mode = SqliteOpenMode.ReadWrite, Pooling = false, DefaultTimeout = 5,
-            }.ToString());
-            await connection.OpenAsync(ct);
+            await using var connection = await OpenAsync(ct);
             await using var command = connection.CreateCommand();
             command.CommandText = $"SELECT id FROM {table} WHERE path IN ({string.Join(", ", candidates.Select((_, i) => $"$p{i}"))}) LIMIT 1";
             for (var i = 0; i < candidates.Length; i++)

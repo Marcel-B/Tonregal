@@ -38,6 +38,15 @@ public sealed record SmartPlaylistInfo(
 
 public sealed record KeyCount(string Key, int Tracks);
 
+/// <summary>Ein Eintrag für die Warteschlange des Players, je Track die bevorzugte Datei.</summary>
+public sealed record PlaylistItem(int FileId, int TrackId, string Title, string Artist, string Album, int AlbumId, int DurationMs);
+
+/// <param name="FromNavidrome">
+/// <c>true</c>: Navidromes Auswertung mit allen Regeln. <c>false</c>: Tonregal hat selbst ausgewertet, weil Navidrome
+/// die Liste noch nicht kennt oder nicht erreichbar ist; „nie gehört“ fehlt dann.
+/// </param>
+public sealed record SmartPlaylistTracks(bool FromNavidrome, IReadOnlyList<PlaylistItem> Items);
+
 /// <summary>
 /// Smart Playlists in der Datenbank und als <c>.nsp</c>-Dateien unter <c>Library/Playlists</c>. Ungültige Eingaben
 /// werfen <see cref="ArgumentException"/> (Parametername = Feld), ein vergebener Name <see cref="InvalidOperationException"/>.
@@ -48,6 +57,9 @@ public interface ISmartPlaylists
 
     /// <summary>Tonarten der Bibliothek mit Anzahl, als Auswahl für die Regeln.</summary>
     Task<IReadOnlyList<KeyCount>> KeysAsync(CancellationToken ct);
+
+    /// <summary>Die Stücke zum Abspielen; <c>null</c>, wenn es die Playlist nicht gibt.</summary>
+    Task<SmartPlaylistTracks?> TracksAsync(int id, CancellationToken ct);
 
     Task<SmartPlaylistInfo> CreateAsync(SmartPlaylistInput input, CancellationToken ct);
 

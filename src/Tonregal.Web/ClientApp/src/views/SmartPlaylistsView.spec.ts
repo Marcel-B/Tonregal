@@ -2,10 +2,16 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import PrimeVue from 'primevue/config'
+import { createPinia, setActivePinia } from 'pinia'
+import { usePlayerStore } from '@/stores/player'
 import SmartPlaylistsView from './SmartPlaylistsView.vue'
 import type { SmartPlaylist } from '@/api'
 
-const mountView = () => mount(SmartPlaylistsView, { global: { plugins: [PrimeVue] } })
+const mountView = () => {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  return mount(SmartPlaylistsView, { global: { plugins: [PrimeVue, pinia] } })
+}
 const button = (wrapper: ReturnType<typeof mountView>, label: string) => wrapper.findAll('button').find((b) => b.text().includes(label))!
 
 const neu: SmartPlaylist = {
@@ -96,5 +102,22 @@ describe('SmartPlaylistsView', () => {
     await flushPromises()
     expect(fetch).toHaveBeenCalledWith('/api/smart-playlists/1', expect.objectContaining({ method: 'DELETE' }))
     expect(wrapper.find('[data-testid="playlist-1"]').exists()).toBe(false)
+  })
+
+  it('spielt die aktuelle Auswertung im Player', async () => {
+    const item = { fileId: 7, trackId: 3, title: 'Nachtfahrt', artist: 'Tonwerk', album: 'Nacht', albumId: 2, durationMs: 1000 }
+    stub((url) =>
+      url === '/api/smart-playlists/1/tracks' ? new Response(JSON.stringify({ fromNavidrome: false, items: [item] })) : undefined,
+    )
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.find('[data-testid="play"]').trigger('click')
+    await flushPromises()
+
+    const player = usePlayerStore()
+    expect(player.queue).toEqual([item])
+    expect(player.playing).toBe(true)
+    expect(wrapper.find('[data-testid="notice"]').text()).toContain('Tonregal hat selbst ausgewählt')
   })
 })

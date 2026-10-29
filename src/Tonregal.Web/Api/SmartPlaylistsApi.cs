@@ -13,6 +13,9 @@ public static class SmartPlaylistsApi
         playlists.MapGet("/", (ISmartPlaylists service, CancellationToken ct) => service.ListAsync(ct));
         playlists.MapGet("/keys", (ISmartPlaylists service, CancellationToken ct) => service.KeysAsync(ct));
 
+        playlists.MapGet("/{id:int}/tracks", async Task<IResult> (int id, ISmartPlaylists service, CancellationToken ct) =>
+            await service.TracksAsync(id, ct) is { } tracks ? TypedResults.Ok(tracks) : TypedResults.NotFound());
+
         playlists.MapPost("/", (SmartPlaylistInput input, ISmartPlaylists service, CancellationToken ct) =>
             Guarded(async () =>
             {
