@@ -2,6 +2,8 @@
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Tonregal.Application;
 using Tonregal.Web.Api;
 
 namespace Tonregal.Tests.Web;
@@ -41,5 +43,20 @@ public sealed class ApiTests : IDisposable
 
         Assert.Equal(new LibraryStats(0, 0, 0, 0, 0, 0, 0, 0), stats);
         Assert.True(File.Exists(Path.Combine(_library.MusicRoot, "app", "tonregal.db")));
+    }
+
+    [Fact]
+    public async Task Busy_meldet_belegtes_Library_Lock()
+    {
+        var client = _factory.CreateClient();
+        var writeLock = _factory.Services.GetRequiredService<LibraryWriteLock>();
+
+        using (await writeLock.AcquireAsync("Import", TestContext.Current.CancellationToken))
+        {
+            var busy = await client.GetFromJsonAsync<BusyResponse>("/api/busy", TestContext.Current.CancellationToken);
+            Assert.NotNull(busy);
+            Assert.True(busy.Busy);
+            Assert.Contains("Import", busy.Reasons);
+        }
     }
 }

@@ -46,5 +46,9 @@ render_template "$DEPLOY_DIR/launchd/de.bvelop.tonregal.plist.template" "$plist"
 plutil -lint "$plist" >/dev/null
 install_agent de.bvelop.tonregal "$plist" "$app/Tonregal.Web" "$SERVICE_LOGS/tonregal.stdout.log"
 
+# Für update-tonregal.sh: Was hier ausgerollt wurde, muss es nicht noch einmal tun.
+mkdir -p "$MUSIC_ROOT/update"
+git -C "$repo" rev-parse HEAD > "$MUSIC_ROOT/update/deployed"
+
 echo
 echo "Tonregal läuft unter http://$ip:5100"

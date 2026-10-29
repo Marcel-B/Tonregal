@@ -97,6 +97,25 @@ Dienst nicht, nennt das Script den Programmpfad; diesen unter Systemeinstellunge
 Sicherheit → Festplattenvollzugriff hinzufügen und das Script erneut ausführen. Nach `brew upgrade navidrome`
 ändert sich der Pfad, dann die Freigabe erneuern.
 
+### Automatische Deploys
+
+```bash
+./deploy/update-tonregal.sh on      # alle 5 Minuten prüfen (on 10: alle 10)
+./deploy/update-tonregal.sh status  # an/aus, Branch, ausgerollter Commit, Ende des Logs
+./deploy/update-tonregal.sh off
+```
+
+Ein LaunchAgent (`de.bvelop.tonregal-update`) holt `main` und rollt neue Commits mit
+`deploy-tonregal.sh` aus, sobald `GET /api/busy` meldet, dass weder Import, Inbox, Scan, Analyse
+noch Backup laufen (eine Analyse in der Nacht hält ihn also bis zu ihrem Ende auf). Vorher sichert
+er `tonregal.db` nach `backups/deploy/` (die letzten zehn). Der Checkout muss auf `main` stehen;
+steht er auf einem anderen Branch, rollt er nichts aus und schreibt das einmal ins Log. Ein
+gescheiterter Commit wird nicht wiederholt, erst der nächste oder `deploy-tonregal.sh` von Hand.
+Zustand und Log liegen auf der T7 (`update/`, `logs/update.log`), nur die Konsolenausgabe des
+Agents unter `~/Library/Logs/Tonregal/update.stdout.log`. Der Agent läuft als `/bin/bash` und
+braucht dafür einmal Festplattenvollzugriff (Cmd+Shift+G, `/bin/bash`). `on` übernimmt den `PATH`
+der aufrufenden Shell, also aus einem Terminal aufrufen, in dem `brew`, `dotnet` und `npm` gehen.
+
 **Metadaten-Abgleich:** Fingerprints berechnet `fpcalc` (Chromaprint, installiert das Deploy-Script).
 Für AcoustID braucht es einen kostenlosen Client-Key von https://acoustid.org/new-application, der in
 `/Volumes/T7/Musik/app/appsettings.Production.json` eingetragen wird:
