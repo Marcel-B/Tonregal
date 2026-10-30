@@ -1,5 +1,5 @@
-# Baut die Tonregal-App fürs iPhone, signiert sie für den App Store und lädt sie zu TestFlight hoch: von Hand über
-# Actions → TestFlight → Run workflow. Übernommen aus Marcel-B/Tonwerk-AI und braucht dieselben Repository-Secrets:
+# Baut die Tonregal-App fürs iPhone, signiert sie für den App Store und lädt sie zu TestFlight hoch: von selbst bei jedem
+# Push auf main, der die App ändert (apple/, außer Doku), sonst von Hand über Actions → TestFlight → Run workflow. Übernommen aus Marcel-B/Tonwerk-AI und braucht dieselben Repository-Secrets:
 #   APPLE_TEAM_ID   die Team-ID des Developer-Accounts
 #   ASC_KEY_ID      die ID des App-Store-Connect-API-Keys (die zehn Zeichen in AuthKey_<id>.p8)
 #   ASC_ISSUER_ID   die Issuer-ID über der Key-Liste in App Store Connect
@@ -9,12 +9,24 @@
 name: TestFlight
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "apple/**"
+      - "!apple/**/*.md"
+      - "!apple/set-testflight-secrets.sh"
+      - ".github/workflows/testflight.yml"
   workflow_dispatch:
     inputs:
       version:
         description: "Version (leer: MARKETING_VERSION aus dem Projekt)"
         required: false
         type: string
+
+# Zwei Merges kurz hintereinander: nur der neuere Build geht hoch.
+concurrency:
+  group: testflight
+  cancel-in-progress: true
 
 jobs:
   upload:
