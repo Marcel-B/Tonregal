@@ -10,6 +10,7 @@ import SelectButton from 'primevue/selectbutton'
 import Dialog from 'primevue/dialog'
 import CandidateTable from '@/components/CandidateTable.vue'
 import InboxUpload from '@/components/InboxUpload.vue'
+import AcceptReview from '@/components/AcceptReview.vue'
 import LegacyCleanup from '@/components/LegacyCleanup.vue'
 import ReleaseCover from '@/components/ReleaseCover.vue'
 import { useStatusStore } from '@/stores/status'
@@ -159,16 +160,26 @@ const progress = computed(() => {
   const s = status.inbox
   if (!s) return ''
   if (s.running) {
-    if (s.importsPending || s.imported) return `Übernehme in die Library … ${s.imported} fertig, ${s.importsPending} offen`
+    if (s.importsPending || s.imported || s.importFailed)
+      return `Übernehme in die Library … ${s.imported} fertig${s.importFailed ? `, ${s.importFailed} gescheitert` : ''}, ${s.importsPending} offen`
     return s.currentPath ? `Verarbeite ${s.currentPath} …` : 'Prüfe die Inbox …'
   }
   const parts = []
   if (s.imported) parts.push(`${s.imported} Datei(en) in die Library übernommen`)
+  if (s.importFailed) parts.push(`${s.importFailed} nicht übernommen`)
   if (s.waiting) parts.push(`${s.waiting} Datei(en) werden noch kopiert`)
   return parts.join(' · ')
 })
 
 const allMatched = computed(() => jobs.value.filter((j) => j.state === 'Matched'))
+const reviewJobs = computed(() => jobs.value.filter((j) => j.state === 'NeedsReview'))
+// Erkannt, aber die Übernahme scheiterte: Gründe gebündelt zeigen, statt sie nur in den Zeilen zu verstecken.
+const failedMatched = computed(() => allMatched.value.filter((j) => j.error))
+const failedReasons = computed(() => {
+  const counts = new Map<string, number>()
+  for (const job of failedMatched.value) counts.set(job.error!, (counts.get(job.error!) ?? 0) + 1)
+  return [...counts].sort((a, b) => b[1] - a[1])
+})
 const matched = (group?: string) => (group === undefined ? allMatched.value : (byGroup.value.get(group)?.matched ?? []))
 const actionError = ref<string | null>(null)
 
@@ -198,6 +209,11 @@ const unmatched = (group: string) => byGroup.value.get(group)?.unmatched ?? []
 const importGroupUnmatched = (group: string) =>
   run(async () => {
     for (const job of unmatched(group)) await api.importUnmatched(job.id)
+  })
+// Fallback für gescheiterte: wie „Ohne Treffer übernehmen“, mit Titel, Interpret und Album aus den Tags.
+const importFailedUnmatched = () =>
+  run(async () => {
+    for (const job of failedMatched.value) await api.importUnmatched(job.id)
   })
 const startLegacy = () => run(() => api.scanLegacy())
 const reject = (job: ImportJob) => run(() => api.rejectImport(job.id))
@@ -312,6 +328,7 @@ async function select(candidate: RecordingCandidate) {
       data-testid="import-all"
       @click="importJobs(matched())"
     />
+    <AcceptReview :jobs="reviewJobs" @done="load" />
     <Button
       v-if="problems.length"
       :label="`Fehler kopieren (${problems.length})`"
@@ -361,6 +378,21 @@ async function select(candidate: RecordingCandidate) {
     </p>
   </div>
   <Message v-if="actionError" severity="error" class="mb-4">{{ actionError }}</Message>
+  <Message v-if="failedMatched.length && !status.inbox?.running" severity="warn" class="mb-4" data-testid="import-failed">
+    <p>{{ failedMatched.length }} erkannte Datei(en) ließen sich nicht mit ihrem Treffer übernehmen:</p>
+    <ul class="my-1 list-disc pl-5">
+      <li v-for="[reason, n] in failedReasons.slice(0, 5)" :key="reason" class="break-all">{{ reason }} ({{ n }})</li>
+    </ul>
+    <Button
+      :label="`Mit ihren Tags übernehmen (${failedMatched.length})`"
+      icon="pi pi-file-import"
+      severity="secondary"
+      size="small"
+      class="mt-1"
+      data-testid="import-failed-unmatched"
+      @click="importFailedUnmatched"
+    />
+  </Message>
 
   <Message v-if="error" severity="error" class="mb-4">{{ error }}</Message>
   <Message v-if="status.inbox?.lastError" severity="warn" class="mb-4">{{ status.inbox.lastError }}</Message>

@@ -15,7 +15,7 @@ namespace Tonregal.Web.Inbox;
 
 public sealed record InboxStatus(
     bool Running, string? CurrentPath, int Processed, int Waiting, int Imported, int ImportsPending,
-    DateTimeOffset? LastRunAt, string? LastError);
+    DateTimeOffset? LastRunAt, string? LastError, int ImportFailed = 0);
 
 /// <summary>
 /// Überwacht die Inbox: <see cref="FileSystemWatcher"/> plus Vollscan beim Start und alle paar
@@ -37,7 +37,8 @@ public sealed class InboxService(
     private readonly Channel<bool> _requests = Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
 
-    private readonly ConcurrentQueue<int> _imports = new();
+    /// <summary>Angeforderte Übernahmen; <c>Unmatched</c>: ohne Treffer, mit Titel und Interpret aus den Tags.</summary>
+    private readonly ConcurrentQueue<(int Id, bool Unmatched)> _imports = new();
     private int _legacyRequested;
     private volatile InboxStatus _status = new(false, null, 0, 0, 0, 0, null, null);
     private FileSystemWatcher? _watcher;
@@ -58,7 +59,16 @@ public sealed class InboxService(
     public InboxStatus EnqueueImports(IEnumerable<int> jobIds)
     {
         foreach (var id in jobIds)
-            _imports.Enqueue(id);
+            _imports.Enqueue((id, false));
+        RequestRun();
+        return _status with { ImportsPending = _imports.Count };
+    }
+
+    /// <summary>Stellt zu prüfende Jobs ohne Vorschlag an; sie gehen mit ihren Tags in die Library.</summary>
+    public InboxStatus EnqueueUnmatched(IEnumerable<int> jobIds)
+    {
+        foreach (var id in jobIds)
+            _imports.Enqueue((id, true));
         RequestRun();
         return _status with { ImportsPending = _imports.Count };
     }
@@ -85,10 +95,11 @@ public sealed class InboxService(
 
     private async Task RunAsync(CancellationToken ct)
     {
-        await PublishAsync(_status with { Running = true, CurrentPath = null, Processed = 0, Imported = 0, ImportsPending = _imports.Count }, ct);
+        await PublishAsync(_status with { Running = true, CurrentPath = null, Processed = 0, Imported = 0, ImportFailed = 0, ImportsPending = _imports.Count }, ct);
         var processed = 0;
         var waiting = 0;
         var imported = 0;
+        var failed = 0;
         var legacyImported = 0;
         try
         {
@@ -108,7 +119,7 @@ public sealed class InboxService(
                 _ = RequestRunLaterAsync(TimeSpan.FromSeconds(options.Value.InboxStableSeconds + 1), ct);
 
             // Vom Nutzer angeforderte Übernahmen zuerst; sie brauchen kein AcoustID.
-            imported = await ImportQueuedAsync(ct);
+            (imported, failed) = await ImportQueuedAsync(ct);
 
             while (true)
             {
@@ -127,7 +138,7 @@ public sealed class InboxService(
             if (legacyImported > 0)
                 libraryScan.RequestScan();
 
-            await PublishAsync(new InboxStatus(false, null, processed, sync.Waiting, imported, _imports.Count, time.GetUtcNow(), null), ct);
+            await PublishAsync(new InboxStatus(false, null, processed, sync.Waiting, imported, _imports.Count, time.GetUtcNow(), null, failed), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -138,28 +149,48 @@ public sealed class InboxService(
                 logger.LogWarning("Inbox: {Message}", e.Message);
             else
                 logger.LogError(e, "Inbox-Durchlauf fehlgeschlagen");
-            await PublishAsync(new InboxStatus(false, null, processed, waiting, imported, _imports.Count, time.GetUtcNow(), e.Message), ct);
+            await PublishAsync(new InboxStatus(false, null, processed, waiting, imported, _imports.Count, time.GetUtcNow(), e.Message, failed), ct);
         }
     }
 
-    /// <summary>Übernimmt alle angeforderten Jobs; danach indexiert ein Library-Scan die neuen Dateien.</summary>
-    private async Task<int> ImportQueuedAsync(CancellationToken ct)
+    /// <summary>
+    /// Übernimmt alle angeforderten Jobs; danach indexiert ein Library-Scan die neuen Dateien. Eine
+    /// Datei, die scheitert, behält ihren Fehler am Job; die übrigen laufen weiter.
+    /// </summary>
+    private async Task<(int Imported, int Failed)> ImportQueuedAsync(CancellationToken ct)
     {
         var imported = 0;
-        while (_imports.TryDequeue(out var id))
+        var failed = 0;
+        while (_imports.TryDequeue(out var request))
         {
-            await using var scope = scopes.CreateAsyncScope();
-            var job = await scope.ServiceProvider.GetRequiredService<ILibraryImporter>().ImportAsync(id, ct);
+            ImportJob job;
+            try
+            {
+                await using var scope = scopes.CreateAsyncScope();
+                var importer = scope.ServiceProvider.GetRequiredService<ILibraryImporter>();
+                job = request.Unmatched
+                    ? await importer.ImportUnmatchedAsync(request.Id, ct)
+                    : await importer.ImportAsync(request.Id, ct);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                logger.LogWarning(e, "Übernahme von Job {Id} fehlgeschlagen", request.Id);
+                failed++;
+                continue;
+            }
+
             if (job.State == ImportState.Imported)
                 imported++;
-            await PublishAsync(_status with { CurrentPath = job.SourcePath, Imported = imported, ImportsPending = _imports.Count }, ct);
+            else
+                failed++;
+            await PublishAsync(_status with { CurrentPath = job.SourcePath, Imported = imported, ImportFailed = failed, ImportsPending = _imports.Count }, ct);
             if (job.Source == FileSource.Api)
                 await SendAsync(Api.IngestApi.StatusEvent, Api.IngestJobDto.From(job), ct);
         }
 
         if (imported > 0)
             libraryScan.RequestScan();
-        return imported;
+        return (imported, failed);
     }
 
     /// <summary>

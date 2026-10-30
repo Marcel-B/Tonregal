@@ -236,6 +236,15 @@ export interface InboxStatus {
   importsPending: number
   lastRunAt: string | null
   lastError: string | null
+  /** Angeforderte Übernahmen im letzten Durchlauf, die nicht geklappt haben; der Grund steht am Job. */
+  importFailed: number
+}
+
+export interface AcceptReviewResponse {
+  accepted: number
+  unmatched: number
+  skipped: number
+  status: InboxStatus
 }
 
 export interface InboxResponse {
@@ -436,6 +445,8 @@ export const api = {
   rejectImport: (jobId: number) => request<void>('POST', `/inbox/${jobId}/reject`),
   importJobs: (jobIds: number[]) => request<InboxStatus>('POST', '/inbox/import', { jobIds }),
   importUnmatched: (jobId: number) => request<ImportJob>('POST', `/inbox/${jobId}/import-unmatched`),
+  acceptReview: (jobIds: number[], withoutSuggestion: boolean) =>
+    request<AcceptReviewResponse>('POST', '/inbox/accept', { jobIds, withoutSuggestion }),
   legacy: () => get<LegacySummary>('/inbox/legacy'),
   scanLegacy: () => request<InboxStatus>('POST', '/inbox/legacy/scan'),
   legacyCleanup: () => get<LegacyCleanupPreview>('/inbox/legacy/cleanup'),

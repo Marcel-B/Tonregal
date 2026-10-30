@@ -5,8 +5,12 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
+using Tonregal.Infrastructure.Import;
+using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Api;
 using Tonregal.Web.Inbox;
 
@@ -162,5 +166,48 @@ public sealed class InboxApiTests : IDisposable
         Assert.Equal("Alt/02.flac", Assert.Single(legacy!.Jobs).Path);
         var inbox = await _client.GetFromJsonAsync<InboxResponse>("/api/inbox", Json, Ct);
         Assert.Equal("Testalbum/01.mp3", Assert.Single(inbox!.Jobs).Path);
+    }
+
+    [Fact]
+    public async Task Sammel_Uebernahme_prueft_jede_Datei_und_laesst_Faelle_ohne_Vorschlag_auf_Wunsch_stehen()
+    {
+        await WaitForRunAsync();
+        var recording = Guid.NewGuid();
+        var release = Guid.NewGuid();
+        var candidates = JsonSerializer.Serialize(new List<RecordingCandidate>
+        {
+            new(recording, null, "Song", ["Band"], 180_000, release, null, "Album", "Band", "Album", "Official", 1998,
+                1, 1, 10, "1998", "DE", "CD", 0.9),
+        }, InboxImporter.Json);
+        ImportJob Review(string path, Guid? selectedRelease) => new()
+        {
+            SourcePath = path, Source = FileSource.Legacy, State = ImportState.NeedsReview, DurationMs = 181_000,
+            Candidates = candidates, SelectedRecordingId = selectedRelease is null ? null : recording, SelectedReleaseId = selectedRelease,
+            ReviewReason = "Dauer 3:01 passt zu keinem Treffer",
+        };
+        var (withSuggestion, without, foreign) = (Review("Alt/01.mp3", release), Review("Alt/02.mp3", null), Review("Alt/03.mp3", Guid.NewGuid()));
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TonregalDbContext>();
+            db.ImportJobs.AddRange(withSuggestion, without, foreign);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var empty = await _client.PostAsJsonAsync("/api/inbox/accept", new AcceptReviewRequest([], false), Json, Ct);
+        var response = await _client.PostAsJsonAsync(
+            "/api/inbox/accept", new AcceptReviewRequest([withSuggestion.Id, without.Id, foreign.Id, 999], false), Json, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
+        var accepted = (await response.Content.ReadFromJsonAsync<AcceptReviewResponse>(Json, Ct))!;
+        Assert.Equal((1, 0, 3), (accepted.Accepted, accepted.Unmatched, accepted.Skipped));
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<TonregalDbContext>();
+            var jobs = await db.ImportJobs.AsNoTracking().Where(j => j.Source == FileSource.Legacy).ToDictionaryAsync(j => j.SourcePath, Ct);
+            Assert.NotEqual(ImportState.NeedsReview, jobs["Alt/01.mp3"].State);
+            Assert.Null(jobs["Alt/01.mp3"].ReviewReason);
+            Assert.Equal(ImportState.NeedsReview, jobs["Alt/02.mp3"].State);
+            Assert.Equal(ImportState.NeedsReview, jobs["Alt/03.mp3"].State);
+        }
     }
 }

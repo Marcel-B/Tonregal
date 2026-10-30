@@ -36,6 +36,12 @@ public sealed record SelectCandidateRequest(Guid RecordingId, Guid ReleaseId);
 
 public sealed record ImportRequest(IReadOnlyList<int> JobIds);
 
+/// <summary>Sammel-Übernahme zu prüfender Dateien; ohne Vorschlag nur mit <c>WithoutSuggestion</c>.</summary>
+public sealed record AcceptReviewRequest(IReadOnlyList<int> JobIds, bool WithoutSuggestion);
+
+/// <summary>Was angestellt wurde: mit Vorschlag, mit Tags (ohne Treffer), übersprungen.</summary>
+public sealed record AcceptReviewResponse(int Accepted, int Unmatched, int Skipped, InboxStatus Status);
+
 public sealed record UploadResponse(string Path);
 
 public sealed record RetryAllResponse(int Count);
@@ -149,8 +155,9 @@ public static class InboxApi
                 return TypedResults.NotFound();
             if (writeLock.Holder == "Backup")
                 return TypedResults.Problem("Das Backup läuft gerade, bitte danach noch einmal", statusCode: StatusCodes.Status409Conflict);
-            if (existing.State != ImportState.NeedsReview)
-                return TypedResults.Problem("Nur zu prüfende Dateien lassen sich ohne Treffer übernehmen", statusCode: StatusCodes.Status409Conflict);
+            // Auch erkannte, deren Übernahme mit dem Treffer scheiterte: sonst blieben sie für immer stehen.
+            if (existing.State != ImportState.NeedsReview && !(existing.State == ImportState.Matched && existing.Error is not null))
+                return TypedResults.Problem("Nur zu prüfende oder gescheiterte Dateien lassen sich ohne Treffer übernehmen", statusCode: StatusCodes.Status409Conflict);
             var job = await importer.ImportUnmatchedAsync(id, ct);
             if (job.State == ImportState.Imported)
                 scans.RequestScan();
@@ -244,6 +251,42 @@ public static class InboxApi
             if (matched.Count == 0)
                 return TypedResults.Problem("Keiner der Jobs ist zum Übernehmen bereit", statusCode: StatusCodes.Status409Conflict);
             return TypedResults.Accepted("/api/inbox", service.EnqueueImports(matched));
+        });
+
+        // „Alle prüfen übernehmen“: je Datei noch einmal geprüft, ob sie zu prüfen ist und ihr Vorschlag
+        // unter den Kandidaten steht; dann wie „Vorschlag übernehmen“. Ohne Vorschlag, wenn gewünscht,
+        // wie „Ohne Treffer übernehmen“. Die Übernahmen laufen im Hintergrund.
+        inbox.MapPost("/accept", async Task<IResult> (AcceptReviewRequest request, TonregalDbContext db, InboxService service, CancellationToken ct) =>
+        {
+            var ids = request.JobIds.Distinct().ToList();
+            if (ids.Count == 0)
+                return TypedResults.Problem("Keine Dateien gewählt", statusCode: StatusCodes.Status400BadRequest);
+            var jobs = await db.ImportJobs
+                .Where(j => ids.Contains(j.Id) && j.State == ImportState.NeedsReview && j.Source != FileSource.Api)
+                .ToListAsync(ct);
+            var accepted = new List<int>();
+            var unmatched = new List<int>();
+            foreach (var job in jobs)
+            {
+                if (job.SelectedRecordingId is { } recording && job.SelectedReleaseId is { } release
+                    && Candidates(job).Any(c => c.RecordingId == recording && c.ReleaseId == release))
+                {
+                    job.State = ImportState.Matched;
+                    job.ReviewReason = null;
+                    job.Error = null;
+                    accepted.Add(job.Id);
+                }
+                else if (request.WithoutSuggestion)
+                    unmatched.Add(job.Id);
+            }
+
+            await db.SaveChangesAsync(ct);
+            var status = service.Status;
+            if (accepted.Count > 0)
+                status = service.EnqueueImports(accepted);
+            if (unmatched.Count > 0)
+                status = service.EnqueueUnmatched(unmatched);
+            return TypedResults.Ok(new AcceptReviewResponse(accepted.Count, unmatched.Count, ids.Count - accepted.Count - unmatched.Count, status));
         });
 
         // Drag & Drop: eine Datei pro Anfrage, path ist der relative Pfad aus dem Browser („Album/01.mp3“).
