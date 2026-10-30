@@ -114,9 +114,11 @@ noch Backup laufen (eine Analyse in der Nacht hält ihn also bis zu ihrem Ende a
 er `tonregal.db` nach `backups/deploy/` (die letzten zehn). Der Checkout muss auf `main` stehen;
 steht er auf einem anderen Branch, rollt er nichts aus und schreibt das einmal ins Log. Ein
 gescheiterter Commit wird nicht wiederholt, erst der nächste oder `deploy-tonregal.sh` von Hand.
-Zustand und Log liegen auf der T7 (`update/`, `logs/update.log`), nur die Konsolenausgabe des
-Agents unter `~/Library/Logs/Tonregal/update.stdout.log`. Der Agent läuft als `/bin/bash` und
-braucht dafür einmal Festplattenvollzugriff (Cmd+Shift+G, `/bin/bash`). `on` übernimmt den `PATH`
+Zustand und Log liegen intern (`~/Library/Application Support/Tonregal/update/`,
+`~/Library/Logs/Tonregal/update.log`), damit der Agent auch ohne Zugriff auf die T7 weiß, was
+ausgerollt ist, und es melden kann. Der Agent läuft als `/bin/bash` und braucht dafür einmal
+Festplattenvollzugriff (Cmd+Shift+G, `/bin/bash`). Einen Dialog gibt es dafür nicht, macOS verweigert
+Hintergrunddiensten den Zugriff still; `status` sagt, ob er fehlt. `on` übernimmt den `PATH`
 der aufrufenden Shell, also aus einem Terminal aufrufen, in dem `brew`, `dotnet` und `npm` gehen.
 
 **Metadaten-Abgleich:** Fingerprints berechnet `fpcalc` (Chromaprint, installiert das Deploy-Script).

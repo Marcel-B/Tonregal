@@ -8,6 +8,9 @@ LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 # Festplattenvollzugriff-Freigabe für das Programm hilft dabei nicht. Deshalb liegen nur diese
 # kleinen Dienst-Logs intern, alles andere bleibt auf der T7.
 SERVICE_LOGS="$HOME/Library/Logs/Tonregal"
+# Zustand von update-tonregal.sh (ausgerollter Commit usw.), intern: Er muss auch lesbar sein, wenn
+# der Agent die T7 nicht erreicht, sonst hielte er einen nicht ausgerollten Stand für ausgerollt.
+UPDATE_STATE="$HOME/Library/Application Support/Tonregal/update"
 # Tonregal lauscht nur auf localhost; Tailscale Serve (443, TLS) leitet an diese Adresse weiter.
 TONREGAL_LOCAL_URL="http://localhost:5100"
 TONREGAL_PUBLIC_URL="https://oi-o-mat.tail6105c0.ts.net"

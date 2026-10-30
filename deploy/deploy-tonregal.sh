@@ -65,8 +65,8 @@ fi
 
 # Für update-tonregal.sh: Was hier ausgerollt wurde, muss es nicht noch einmal tun. Erst nach dem
 # Health-Check, damit ein Deploy, nach dem Tonregal nicht antwortet, nicht als ausgerollt gilt.
-mkdir -p "$MUSIC_ROOT/update"
-git -C "$repo" rev-parse HEAD > "$MUSIC_ROOT/update/deployed"
+mkdir -p "$UPDATE_STATE"
+git -C "$repo" rev-parse HEAD > "$UPDATE_STATE/deployed"
 
 echo
 echo "Tonregal läuft unter $TONREGAL_PUBLIC_URL (Tailscale Serve → $TONREGAL_LOCAL_URL)"
