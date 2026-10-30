@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -148,6 +149,72 @@ public sealed class LibraryApiTests : IDisposable
         Assert.False((await _client.GetFromJsonAsync<AlbumDetail>($"/api/library/albums/{samplerId}", Json, ct))!.CanFetchCover);
         var cover = await _client.GetAsync($"/api/library/albums/{samplerId}/cover", ct);
         Assert.Equal(FakeCovers.Cover.Data, await cover.Content.ReadAsByteArrayAsync(ct));
+    }
+
+    [Fact]
+    public async Task Titel_als_Originaldatei_herunterladen()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await WaitForScanAsync();
+        var album = await TestalbumAsync(ct);
+        var flac = album.Tracks[1].Files[0];
+
+        var response = await _client.GetAsync($"/api/library/files/{flac.Id}/download", ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
+        Assert.Equal("02 - Zweiter Song.flac", response.Content.Headers.ContentDisposition?.FileNameStar);
+        Assert.Equal(await File.ReadAllBytesAsync(Path.Combine(_library.AlbumFolder, "02 - Zweiter Song.flac"), ct), await response.Content.ReadAsByteArrayAsync(ct));
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/library/files/999/download", ct)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Album_als_ZIP_herunterladen()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await WaitForScanAsync();
+        var album = await TestalbumAsync(ct);
+
+        var response = await _client.GetAsync($"/api/library/albums/{album.Id}/download", ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/zip", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("Testband - Testalbum (2024).zip", response.Content.Headers.ContentDisposition?.FileNameStar);
+        using var zip = new ZipArchive(new MemoryStream(await response.Content.ReadAsByteArrayAsync(ct)));
+        Assert.Equal(
+            new[] { "01 - Erster Song.mp3", "02 - Zweiter Song.flac", "03 - Dritter Song.m4a", "cover.jpg" }
+                .Select(f => $"Testband - Testalbum (2024)/{f}"),
+            zip.Entries.Select(e => e.FullName));
+        using var copy = new MemoryStream();
+        await using (var entry = await zip.Entries[1].OpenAsync(ct))
+            await entry.CopyToAsync(copy, ct);
+        Assert.Equal(await File.ReadAllBytesAsync(Path.Combine(_library.AlbumFolder, "02 - Zweiter Song.flac"), ct), copy.ToArray());
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/library/albums/999/download", ct)).StatusCode);
+    }
+
+    [Fact]
+    public void ZIP_Eintraege_ab_dem_gemeinsamen_Ordner()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "Album");
+        string[] files = [Path.Combine(root, "CD1", "01.flac"), Path.Combine(root, "CD2", "01.flac"), Path.Combine(root, "cover.jpg"), Path.Combine(root, "COVER.jpg")];
+
+        var entries = AlbumZipResult.EntryNames("A - B", files).Select(e => e.Entry);
+
+        Assert.Equal(["A - B/CD1/01.flac", "A - B/CD2/01.flac", "A - B/cover.jpg", "A - B/COVER (2).jpg"], entries);
+    }
+
+    [Fact]
+    public void Dateinamen_ohne_stoerende_Zeichen()
+    {
+        Assert.Equal("AC_DC - Back in Black_ (1980)", LibraryApi.SafeFileName("AC/DC - Back in Black? (1980)"));
+        Assert.Equal("Album", LibraryApi.SafeFileName("..."));
+    }
+
+    private async Task<AlbumDetail> TestalbumAsync(CancellationToken ct)
+    {
+        var albums = await _client.GetFromJsonAsync<List<AlbumListItem>>("/api/library/albums", Json, ct);
+        var id = albums!.Single(a => a.Title == "Testalbum").Id;
+        return (await _client.GetFromJsonAsync<AlbumDetail>($"/api/library/albums/{id}", Json, ct))!;
     }
 
     private sealed class FakeCovers : ICoverArtSource

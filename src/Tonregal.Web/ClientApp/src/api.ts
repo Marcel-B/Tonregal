@@ -386,6 +386,9 @@ export const api = {
   fetchCover: (albumId: number) => request<void>('POST', `/library/albums/${albumId}/cover`),
   alignRelease: (albumId: number) => request<ReleaseAlignResult>('POST', `/library/albums/${albumId}/align-release`),
   audioUrl: (fileId: number) => `/api/library/files/${fileId}/audio`,
+  downloadUrl: (fileId: number) => `/api/library/files/${fileId}/download`,
+  /** ZIP mit der besten Datei je Track und dem Cover. */
+  albumDownloadUrl: (albumId: number) => `/api/library/albums/${albumId}/download`,
   streamUrl: (fileId: number) => `/api/player/files/${fileId}/stream`,
   /** submission=false meldet „läuft gerade“, true zählt das Stück in Navidrome als gehört. */
   scrobble: (fileId: number, submission: boolean) => request<void>('POST', `/player/files/${fileId}/scrobble?submission=${submission}`),
