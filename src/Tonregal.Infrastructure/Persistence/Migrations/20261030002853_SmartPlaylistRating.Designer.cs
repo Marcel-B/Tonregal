@@ -11,7 +11,7 @@ using Tonregal.Infrastructure.Persistence;
 namespace Tonregal.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TonregalDbContext))]
-    [Migration("20261030002022_SmartPlaylistRating")]
+    [Migration("20261030002853_SmartPlaylistRating")]
     partial class SmartPlaylistRating
     {
         /// <inheritdoc />
@@ -550,6 +550,33 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.ToTable("Tracks");
                 });
 
+            modelBuilder.Entity("Tonregal.Domain.Entities.TrackLyrics", b =>
+                {
+                    b.Property<int>("TrackId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CheckedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Instrumental")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Synced")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("TrackId");
+
+                    b.ToTable("Lyrics", (string)null);
+                });
+
             modelBuilder.Entity("TrackArtist", b =>
                 {
                     b.Property<int>("ArtistsId")
@@ -642,6 +669,17 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Album");
+                });
+
+            modelBuilder.Entity("Tonregal.Domain.Entities.TrackLyrics", b =>
+                {
+                    b.HasOne("Tonregal.Domain.Entities.Track", "Track")
+                        .WithOne()
+                        .HasForeignKey("Tonregal.Domain.Entities.TrackLyrics", "TrackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Track");
                 });
 
             modelBuilder.Entity("TrackArtist", b =>
