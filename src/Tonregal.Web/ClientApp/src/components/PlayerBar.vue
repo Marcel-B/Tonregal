@@ -7,7 +7,7 @@ import Rating from 'primevue/rating'
 import { api, formatDuration } from '@/api'
 import { usePlayerStore } from '@/stores/player'
 import { useRatingsStore } from '@/stores/ratings'
-import LyricsPanel from './LyricsPanel.vue'
+import NowPlaying from './NowPlaying.vue'
 import ShuffleIcon from './ShuffleIcon.vue'
 
 const player = usePlayerStore()
@@ -16,7 +16,6 @@ const audio = ref<HTMLAudioElement | null>(null)
 const position = ref(0)
 const duration = ref(0)
 const queueVisible = ref(false)
-const lyricsVisible = ref(false)
 const error = ref<string | null>(null)
 
 // Navidrome zählt ein Stück als gehört nach der Hälfte, spätestens nach 4 Minuten (wie Last.fm).
@@ -24,6 +23,9 @@ let nowPlayingSent = false
 let submitted = false
 // Beim Wechsel der Quelle meldet der Browser ein „pause“, das kein Pausenwunsch ist.
 let switching = false
+// Nach dem Neuladen geht es an der gemerkten Stelle weiter, sobald das Element die Länge kennt.
+let resumeAt = 0
+let rememberedAt = 0
 
 function load(autoplay: boolean) {
   const el = audio.value
@@ -31,6 +33,7 @@ function load(autoplay: boolean) {
   if (!el) return
   error.value = null
   nowPlayingSent = submitted = false
+  resumeAt = 0
   position.value = 0
   duration.value = item ? item.durationMs / 1000 : 0
   if (!item) {
@@ -61,6 +64,8 @@ watch(() => player.startToken, () => load(player.playing), { flush: 'sync' })
 watch(() => player.playing, () => apply(), { flush: 'sync' })
 onMounted(() => {
   load(false)
+  resumeAt = player.savedPosition()
+  position.value = resumeAt
   registerMediaSession()
 })
 watch(() => player.current?.fileId, (fileId) => fileId !== undefined && ratings.load([fileId]), { immediate: true })
@@ -82,6 +87,21 @@ function onTimeUpdate() {
     api.scrobble(item.fileId, true).catch(() => {})
   }
   updatePositionState()
+  if (Math.abs(el.currentTime - rememberedAt) >= 5) remember()
+}
+
+function remember() {
+  const el = audio.value
+  if (!el || !player.current) return
+  rememberedAt = el.currentTime
+  player.rememberPosition(el.currentTime)
+}
+
+function onMetadata() {
+  if (!resumeAt || !audio.value) return
+  audio.value.currentTime = resumeAt
+  position.value = resumeAt
+  resumeAt = 0
 }
 
 function onLoaded() {
@@ -91,6 +111,7 @@ function onLoaded() {
 function onPause() {
   if (switching || audio.value?.ended) return
   player.playing = false
+  remember()
 }
 
 function onDurationChange() {
@@ -112,8 +133,53 @@ function seek(event: Event) {
 function seekTo(seconds: number) {
   const el = audio.value
   if (!el) return
+  resumeAt = 0
   el.currentTime = seconds
   position.value = el.currentTime
+  remember()
+}
+
+/** Cover und Titel öffnen den großen Player, wie ein Tipp auf die kleine Leiste in den Musik-Apps. */
+function expand() {
+  player.expanded = true
+}
+
+// ---- Warteschlange umsortieren --------------------------------------------------------------------------------
+
+/** Am Griff gezogen (Maus, Finger, Stift über Pointer Events, die auch Safari auf dem iPhone kann) oder per Pfeiltaste. */
+const dragFrom = ref(-1)
+const dragTo = ref(-1)
+const rows = ref<HTMLElement[]>([])
+
+function dragStart(event: PointerEvent, at: number) {
+  dragFrom.value = dragTo.value = at
+  ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
+}
+
+function dragMove(event: PointerEvent) {
+  if (dragFrom.value < 0) return
+  const at = rows.value.findIndex((row) => {
+    const box = row.getBoundingClientRect()
+    return event.clientY >= box.top && event.clientY < box.bottom
+  })
+  if (at >= 0) dragTo.value = at
+  else if (rows.value.length && event.clientY >= rows.value[rows.value.length - 1]!.getBoundingClientRect().bottom) {
+    dragTo.value = rows.value.length - 1
+  } else if (rows.value.length && event.clientY < rows.value[0]!.getBoundingClientRect().top) dragTo.value = 0
+}
+
+function dragEnd() {
+  if (dragFrom.value >= 0 && dragTo.value >= 0) player.move(dragFrom.value, dragTo.value)
+  dragFrom.value = dragTo.value = -1
+}
+
+function moveByKey(event: KeyboardEvent, at: number) {
+  const to = event.key === 'ArrowUp' ? at - 1 : event.key === 'ArrowDown' ? at + 1 : -1
+  if (to < 0 || to >= player.queue.length) return
+  event.preventDefault()
+  player.move(at, to)
+  // Der Fokus folgt dem Eintrag, damit sich mehrfach drücken lässt.
+  requestAnimationFrame(() => rows.value[to]?.querySelector<HTMLElement>('[data-handle]')?.focus())
 }
 
 function previous() {
@@ -130,7 +196,7 @@ function registerMediaSession() {
     ['pause', () => (player.playing = false)],
     ['previoustrack', previous],
     ['nexttrack', () => player.next()],
-    ['seekto', (d) => d.seekTime !== undefined && audio.value && (audio.value.currentTime = d.seekTime)],
+    ['seekto', (d) => d.seekTime !== undefined && seekTo(d.seekTime)],
   ]
   for (const [action, handler] of handlers) {
     try {
@@ -171,6 +237,7 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
     data-testid="player-audio"
     @timeupdate="onTimeUpdate"
     @durationchange="onDurationChange"
+    @loadedmetadata="onMetadata"
     @loadeddata="onLoaded"
     @play="player.playing = true"
     @pause="onPause"
@@ -194,29 +261,34 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
       @input="seek"
     />
     <div class="flex items-center gap-3 px-3 py-2">
-      <RouterLink :to="{ name: 'album', params: { id: player.current.albumId } }" class="flex items-center gap-3 min-w-0 flex-1">
-        <img :src="api.coverUrl(player.current.albumId)" alt="" class="size-11 rounded object-cover bg-surface-200 dark:bg-surface-800 shrink-0" />
-        <div class="min-w-0">
-          <div class="truncate font-medium" data-testid="player-title">{{ player.current.title }}</div>
-          <div class="truncate text-sm text-surface-500">
-            <template v-if="error || ratings.error"><span class="text-red-500">{{ error ?? ratings.error }}</span></template>
-            <template v-else>{{ player.current.artist }} · {{ player.current.album }}</template>
-          </div>
+      <button type="button" class="shrink-0 cursor-pointer" aria-label="Player öffnen" data-testid="player-expand" @click="expand">
+        <img :src="api.coverUrl(player.current.albumId)" alt="" class="size-11 rounded object-cover bg-surface-200 dark:bg-surface-800" />
+      </button>
+      <div class="min-w-0 flex-1">
+        <button type="button" class="block w-full truncate text-left cursor-pointer hover:underline" title="Player öffnen" @click="expand">
+          <span class="font-medium" data-testid="player-title">{{ player.current.title }}</span>
+          <span class="text-sm text-surface-500"> · {{ player.current.artist }}</span>
+        </button>
+        <!-- Bewertet wird, während es läuft, wenn sich ein Stück am besten beurteilen lässt; auch auf dem Telefon. -->
+        <div class="mt-0.5 flex items-center gap-3 text-sm">
+          <span v-if="error || ratings.error" class="truncate text-red-500">{{ error ?? ratings.error }}</span>
+          <Rating
+            v-else
+            :model-value="ratings.of(player.current.fileId)"
+            class="mini-rating"
+            aria-label="Bewertung"
+            data-testid="player-rating"
+            @update:model-value="(value: number | null) => ratings.rate(player.current!.fileId, value ?? 0)"
+          />
+          <span class="hidden sm:inline text-surface-500 tabular-nums">{{ time(position) }} / {{ time(duration) }}</span>
         </div>
-      </RouterLink>
-      <Rating
-        :model-value="ratings.of(player.current.fileId)"
-        class="hidden md:flex"
-        aria-label="Bewertung"
-        data-testid="player-rating"
-        @update:model-value="(value: number | null) => ratings.rate(player.current!.fileId, value ?? 0)"
-      />
-      <span class="hidden sm:inline text-sm text-surface-500 tabular-nums">{{ time(position) }} / {{ time(duration) }}</span>
+      </div>
       <div class="flex items-center">
         <Button
           icon="pi pi-replay"
           text
           rounded
+          class="!hidden sm:!inline-flex"
           :severity="player.repeat === 'off' ? 'secondary' : undefined"
           :badge="player.repeat === 'one' ? '1' : undefined"
           :aria-label="repeatLabel[player.repeat]"
@@ -234,29 +306,50 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
           @click="player.toggle()"
         />
         <Button icon="pi pi-step-forward" text rounded aria-label="Weiter" :disabled="!player.hasNext" data-testid="player-next" @click="player.next()" />
-        <Button icon="pi pi-align-left" text rounded aria-label="Songtext" data-testid="player-lyrics" @click="lyricsVisible = true" />
-        <Button icon="pi pi-list" text rounded aria-label="Warteschlange" data-testid="player-queue" @click="queueVisible = true" />
+        <Button icon="pi pi-list" text rounded class="!hidden sm:!inline-flex" aria-label="Warteschlange" data-testid="player-queue" @click="queueVisible = true" />
       </div>
     </div>
   </div>
-  <Drawer v-model:visible="lyricsVisible" position="right" class="!w-full sm:!w-[28rem]">
-    <template #header>
-      <div v-if="player.current" class="min-w-0">
-        <div class="truncate font-semibold">{{ player.current.title }}</div>
-        <div class="truncate text-sm text-surface-500">{{ player.current.artist }}</div>
-      </div>
-    </template>
-    <LyricsPanel v-if="player.current" :track-id="player.current.trackId" :position="position" @seek="seekTo" />
-  </Drawer>
+  <Transition name="sheet">
+    <NowPlaying
+      v-if="player.expanded && player.current"
+      :position="position"
+      :duration="duration"
+      :error="error"
+      @seek="seekTo"
+      @previous="previous"
+      @queue="queueVisible = true"
+    />
+  </Transition>
   <Drawer v-model:visible="queueVisible" header="Warteschlange" position="right" class="!w-full sm:!w-96">
-    <ol class="flex flex-col">
+    <ol class="flex flex-col" @pointermove="dragMove" @pointerup="dragEnd" @pointercancel="dragEnd">
       <li
         v-for="(item, i) in player.queue"
         :key="`${i}-${item.fileId}`"
-        class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-surface-100 dark:hover:bg-surface-800"
-        :class="i === player.index && 'text-primary font-semibold'"
+        ref="rows"
+        class="flex items-center gap-1 rounded-md px-1 py-1.5 hover:bg-surface-100 dark:hover:bg-surface-800"
+        :class="[
+          i === player.index && 'text-primary font-semibold',
+          // Schon Gespieltes blass, wie in der App.
+          i < player.index && i !== dragFrom && 'opacity-50',
+          i === dragFrom && 'bg-surface-100 dark:bg-surface-800 shadow',
+          dragFrom >= 0 && i === dragTo && i !== dragFrom && (dragTo > dragFrom ? 'border-b-2 border-primary' : 'border-t-2 border-primary'),
+        ]"
         data-testid="queue-item"
       >
+        <span
+          data-handle
+          tabindex="0"
+          role="button"
+          class="drag-handle shrink-0 cursor-grab px-2 py-1 text-surface-400"
+          :aria-label="`${item.title} verschieben (Pfeiltasten)`"
+          title="Ziehen zum Verschieben"
+          data-testid="queue-handle"
+          @pointerdown.prevent="dragStart($event, i)"
+          @keydown="moveByKey($event, i)"
+        >
+          <i class="pi pi-bars" />
+        </span>
         <button class="flex-1 min-w-0 text-left" @click="player.jump(i)">
           <div class="truncate">{{ item.title }}</div>
           <div class="truncate text-sm text-surface-500 font-normal">{{ item.artist }} · {{ formatDuration(item.durationMs) }}</div>
@@ -280,3 +373,36 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
     </template>
   </Drawer>
 </template>
+
+<style scoped>
+/* Nur der Griff nimmt den Finger, damit die Liste daneben weiter scrollt. */
+.drag-handle {
+  touch-action: none;
+}
+
+.mini-rating {
+  --p-rating-icon-size: 0.9rem;
+  gap: 0.15rem;
+}
+
+/* Der große Player kommt aus der kleinen Leiste und geht wieder in sie zurück. */
+.sheet-enter-active,
+.sheet-leave-active {
+  transition:
+    transform 0.25s ease,
+    opacity 0.25s ease;
+}
+
+.sheet-enter-from,
+.sheet-leave-to {
+  transform: translateY(100%);
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-enter-active,
+  .sheet-leave-active {
+    transition: none;
+  }
+}
+</style>

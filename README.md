@@ -231,6 +231,10 @@ unten zeigt, was läuft, und lässt sich auch im Sperrbildschirm und mit Kopfhö
 kommt von Navidrome, Tonregal reicht es nur durch; so zählt Navidrome die Wiedergaben (nach der Hälfte,
 spätestens nach 4 Minuten) und ein dort für den Player *Tonregal* eingestelltes Transcoding greift.
 Kennt Navidrome eine frisch übernommene Datei noch nicht (Scan alle 15 Minuten), spielt Tonregal sie direkt.
+Ein Tipp auf Cover oder Titel der Leiste öffnet den großen Player über den ganzen Bildschirm (wie in Tonwerk-AI und
+der iPhone-App): Cover groß auf einer unscharfen Kopie, Farbe vom Cover, Sterne, Fortschritt mit Restzeit, Rest mischen,
+Zurück/Weiter, Wiederholen, Songtext und Warteschlange; Zuklappen per Pfeil, Escape, Zurück-Geste oder nach unten ziehen.
+Warteschlange und Stelle im Stück übersteht ein Neuladen der Seite (`localStorage`), es geht dort weiter, wo man war.
 Die URL setzt das Deploy-Script; Benutzer und Passwort des Navidrome-Kontos gehören in
 `appsettings.Production.json`:
 
@@ -238,7 +242,7 @@ Die URL setzt das Deploy-Script; Benutzer und Passwort des Navidrome-Kontos geh�
 { "Tonregal": { "Navidrome": { "User": "…", "Password": "…" } } }
 ```
 
-**Songtexte:** Der Knopf mit den Zeilen in der Player-Leiste (in der iPhone-App die Sprechblase im großen Player)
+**Songtexte:** *Songtext* im großen Player (in der iPhone-App die Sprechblase)
 zeigt den Text des laufenden Stücks; synchronisierte Texte laufen mit, ein Tipp auf eine Zeile springt dorthin.
 Tonregal nimmt zuerst eine `.lrc`-Datei mit dem Namen der Audiodatei, dann den eingebetteten Text (ID3 `USLT`,
 Vorbis `LYRICS`, MP4 `©lyr`, so bringt Tonwerk-AI seine Texte mit) und fragt sonst [lrclib.net](https://lrclib.net)
@@ -248,13 +252,14 @@ gefunden“, liegen in der Tabelle `Lyrics`; reine oder fehlende Texte werden na
 im Songtext erzwingt es sofort (und ersetzt eine falsche `.lrc`). Eine von Hand abgelegte `.lrc` gilt immer.
 `Tonregal:Lyrics:Online=false` schaltet lrclib.net ab, `WriteSidecar=false` das Schreiben der `.lrc`.
 
-**Bewerten, Zufall, Wiederholen:** Sterne (in der Player-Leiste und in der Titelliste eines Albums; ein Klick auf
+**Bewerten, Zufall, Wiederholen:** Sterne (in der Player-Leiste, auch auf dem Telefon, im großen Player und in der Titelliste eines Albums; ein Klick auf
 den gesetzten Stern nimmt sie zurück) gehen per Subsonic `setRating` an Navidrome und gelten für das Konto aus
 `appsettings.Production.json`; gelesen werden sie aus `navidrome.db`. Tonregal speichert sie nicht selbst und schreibt
 sie nicht in die Tags. Eine frisch übernommene Datei lässt sich erst bewerten, wenn Navidrome sie gescannt hat.
 *Zufällig* mischt ein Album, auf einer Interpretenseite alle Stücke des Interpreten (auch Gastauftritte auf fremden
 Alben) und in der Bibliothek *Alles zufällig* bis zu 2000 Stücke (`GET /api/player/shuffle`). In der Warteschlange
-mischt *Rest mischen*, was nach dem laufenden Stück kommt. Der Wiederholen-Knopf schaltet aus → alle → dieses Stück.
+mischt *Rest mischen* (auch im großen Player), was nach dem laufenden Stück kommt; Einträge lassen sich am Griff ziehen
+oder mit den Pfeiltasten verschieben, schon Gespieltes steht blass. Der Wiederholen-Knopf schaltet aus → alle → dieses Stück.
 
 **Smart Playlists:** Auf der Seite *Smart Playlists* legt man Regeln an (BPM-Bereich, Tonarten mit
 „+ passende“ für Quinte hoch/runter und Paralleltonart, Genre, neu seit n Tagen, nie gehört, mindestens n Sterne, Sortierung,

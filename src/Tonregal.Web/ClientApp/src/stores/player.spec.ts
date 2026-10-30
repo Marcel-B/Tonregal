@@ -95,4 +95,27 @@ describe('player store', () => {
     setActivePinia(createPinia())
     expect(usePlayerStore().repeat).toBe('all')
   })
+
+  it('verschiebt Einträge und behält das laufende Stück', () => {
+    const player = usePlayerStore()
+    player.play([item(1), item(2), item(3), item(4)], 1)
+    player.move(3, 0)
+    expect(player.queue.map((i) => i.fileId)).toEqual([4, 1, 2, 3])
+    expect(player.current?.fileId).toBe(2)
+    player.move(2, 3)
+    expect(player.queue.map((i) => i.fileId)).toEqual([4, 1, 3, 2])
+    expect(player.current?.fileId).toBe(2)
+    player.move(0, 2)
+    expect(player.queue.map((i) => i.fileId)).toEqual([1, 3, 4, 2])
+    expect(player.index).toBe(3)
+  })
+
+  it('merkt sich die Stelle nur für den Eintrag, zu dem sie gehört', () => {
+    const player = usePlayerStore()
+    player.play([item(1), item(2)])
+    player.rememberPosition(42)
+    expect(player.savedPosition()).toBe(42)
+    player.next()
+    expect(player.savedPosition()).toBe(0)
+  })
 })

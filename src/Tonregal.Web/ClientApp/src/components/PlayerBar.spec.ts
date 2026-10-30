@@ -114,4 +114,50 @@ describe('PlayerBar', () => {
     expect(pause).toHaveBeenCalled()
     expect(player.playing).toBe(false)
   })
+
+  it('öffnet den großen Player über Cover oder Titel', async () => {
+    const wrapper = mountBar()
+    const player = usePlayerStore()
+    player.play([item(1), item(2)])
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="now-playing"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="player-expand"]').trigger('click')
+    expect(player.expanded).toBe(true)
+    expect(wrapper.get('[data-testid="now-playing-title"]').text()).toBe('Song 1')
+
+    await wrapper.get('[data-testid="now-playing-toggle"]').trigger('click')
+    expect(player.playing).toBe(false)
+    await wrapper.get('[data-testid="now-playing-repeat"]').trigger('click')
+    expect(player.repeat).toBe('all')
+
+    await wrapper.get('[data-testid="now-playing-close"]').trigger('click')
+    await vi.waitFor(() => expect(player.expanded).toBe(false))
+  })
+
+  it('macht nach dem Neuladen an der gemerkten Stelle weiter', async () => {
+    usePlayerStore().play([item(1)])
+    usePlayerStore().rememberPosition(80)
+    await Promise.resolve()
+    setActivePinia(createPinia())
+
+    const wrapper = mountBar()
+    const audio = wrapper.get('audio')
+    Object.defineProperty(audio.element, 'currentTime', { value: 0, configurable: true, writable: true })
+    expect(usePlayerStore().playing).toBe(false)
+    await audio.trigger('loadedmetadata')
+    expect((audio.element as HTMLAudioElement).currentTime).toBe(80)
+  })
+
+  it('verschiebt Einträge der Warteschlange per Pfeiltaste', async () => {
+    const wrapper = mount(PlayerBar, { global: { plugins: [PrimeVue], stubs: { RouterLink: RouterLinkStub, Drawer: { template: '<div><slot /></div>' } } } })
+    const player = usePlayerStore()
+    player.play([item(1), item(2), item(3)])
+    await wrapper.vm.$nextTick()
+
+    await wrapper.findAll('[data-testid="queue-handle"]')[0]!.trigger('keydown', { key: 'ArrowDown' })
+    expect(player.queue.map((i) => i.fileId)).toEqual([2, 1, 3])
+    expect(player.current?.fileId).toBe(1)
+  })
 })
+
