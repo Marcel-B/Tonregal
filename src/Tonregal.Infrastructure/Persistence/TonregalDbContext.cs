@@ -21,6 +21,7 @@ public class TonregalDbContext(DbContextOptions<TonregalDbContext> options) : Db
     public DbSet<MetadataCacheEntry> MetadataCache => Set<MetadataCacheEntry>();
     public DbSet<IngestKey> IngestKeys => Set<IngestKey>();
     public DbSet<SmartPlaylist> SmartPlaylists => Set<SmartPlaylist>();
+    public DbSet<TrackLyrics> Lyrics => Set<TrackLyrics>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(TonregalDbContext).Assembly);

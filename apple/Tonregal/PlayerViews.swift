@@ -58,16 +58,23 @@ struct NowPlayingView: View {
     @Environment(Player.self) private var player
     @State private var scrub: Double?
     @State private var showsQueue = false
+    @AppStorage("tonregal.showsLyrics") private var showsLyrics = false
 
     var body: some View {
         VStack(spacing: 24) {
-            Spacer(minLength: 12)
+            if !showsLyrics {
+                Spacer(minLength: 12)
+            }
             if let item = player.current {
-                CoverImage(url: model.client?.coverURL(album: item.albumId), cornerRadius: 16)
-                    .frame(maxWidth: 360)
-                    .shadow(radius: 16, y: 8)
-                    .scaleEffect(player.isPlaying ? 1 : 0.92)
-                    .animation(.spring(duration: 0.4), value: player.isPlaying)
+                if showsLyrics {
+                    LyricsView(trackId: item.trackId)
+                } else {
+                    CoverImage(url: model.client?.coverURL(album: item.albumId), cornerRadius: 16)
+                        .frame(maxWidth: 360)
+                        .shadow(radius: 16, y: 8)
+                        .scaleEffect(player.isPlaying ? 1 : 0.92)
+                        .animation(.spring(duration: 0.4), value: player.isPlaying)
+                }
                 VStack(spacing: 4) {
                     Text(item.title)
                         .font(.title2.weight(.semibold))
@@ -88,10 +95,22 @@ struct NowPlayingView: View {
             } else {
                 ContentUnavailableView("Nichts in der Warteschlange", systemImage: "music.note")
             }
-            Spacer(minLength: 12)
+            if !showsLyrics {
+                Spacer(minLength: 12)
+            }
             HStack {
                 RoutePicker()
                     .frame(width: 44, height: 44)
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) { showsLyrics.toggle() }
+                } label: {
+                    Image(systemName: showsLyrics ? "quote.bubble.fill" : "quote.bubble")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .disabled(player.current == nil)
+                .accessibilityLabel(showsLyrics ? "Cover zeigen" : "Songtext")
                 Spacer()
                 Button {
                     showsQueue = true

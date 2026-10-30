@@ -233,6 +233,16 @@ Die URL setzt das Deploy-Script; Benutzer und Passwort des Navidrome-Kontos geh�
 { "Tonregal": { "Navidrome": { "User": "…", "Password": "…" } } }
 ```
 
+**Songtexte:** Der Knopf mit den Zeilen in der Player-Leiste (in der iPhone-App die Sprechblase im großen Player)
+zeigt den Text des laufenden Stücks; synchronisierte Texte laufen mit, ein Tipp auf eine Zeile springt dorthin.
+Tonregal nimmt zuerst eine `.lrc`-Datei mit dem Namen der Audiodatei, dann den eingebetteten Text (ID3 `USLT`,
+Vorbis `LYRICS`, MP4 `©lyr`, so bringt Tonwerk-AI seine Texte mit) und fragt sonst [lrclib.net](https://lrclib.net)
+(frei, ohne Key). Ein synchronisierter Treffer von dort schlägt einen eingebetteten reinen Text und landet als `.lrc`
+neben der Datei, übersteht also einen Neuaufbau der Datenbank und kommt mit ins Backup. Ergebnisse, auch „nichts
+gefunden“, liegen in der Tabelle `Lyrics`; reine oder fehlende Texte werden nach 30 Tagen erneut gesucht, *Neu suchen*
+im Songtext erzwingt es sofort (und ersetzt eine falsche `.lrc`). Eine von Hand abgelegte `.lrc` gilt immer.
+`Tonregal:Lyrics:Online=false` schaltet lrclib.net ab, `WriteSidecar=false` das Schreiben der `.lrc`.
+
 **Smart Playlists:** Auf der Seite *Smart Playlists* legt man Regeln an (BPM-Bereich, Tonarten mit
 „+ passende“ für Quinte hoch/runter und Paralleltonart, Genre, neu seit n Tagen, nie gehört, Sortierung,
 Höchstzahl). Tonregal schreibt sie als `Library/Playlists/tonregal-{id}.nsp`; Navidrome liest sie beim

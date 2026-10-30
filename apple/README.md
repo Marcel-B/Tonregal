@@ -6,7 +6,8 @@ Sperrbildschirm, Kontrollzentrum, AirPods, AirPlay, Unterbrechung durch Anrufe.
 
 Stand 0.1: Alben (zuletzt übernommene zuerst) und Interpreten mit Suche, Albumseite mit BPM/Tonart, Abspielen und
 Zufällig, „Als Nächstes“ / „Hinten anhängen“ (Wischen oder langes Drücken), Warteschlange mit Verschieben und Löschen,
-die über App-Neustarts erhalten bleibt, Scrobble an Navidrome nach der Hälfte bzw. 4 Minuten. Noch nicht: Offline-Cache,
+die über App-Neustarts erhalten bleibt, Scrobble an Navidrome nach der Hälfte bzw. 4 Minuten, Songtext im großen Player
+(Sprechblase unten; synchronisierte Texte laufen mit, Tippen springt). Noch nicht: Offline-Cache,
 CarPlay, Playlists.
 
 ## Verbinden
