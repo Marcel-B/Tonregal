@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
+using Tonregal.Infrastructure.Monitoring;
 using Tonregal.Web.Hubs;
 
 namespace Tonregal.Web.Analysis;
@@ -92,6 +93,13 @@ public sealed class AnalysisService(
                 await using var scope = scopes.CreateAsyncScope();
                 var analyzer = scope.ServiceProvider.GetRequiredService<ILibraryAnalyzer>();
                 album = await analyzer.AnalyzeNextAlbumAsync(ct);
+                if (album is not null)
+                {
+                    // Errors hat je gescheiterte Datei eine Zeile, ReplayGain kann für ein Album eine dazulegen.
+                    var failed = Math.Min(album.Errors.Count, album.Files);
+                    TonregalMetrics.Analysis.WithLabels("failed").Inc(failed);
+                    TonregalMetrics.Analysis.WithLabels("done").Inc(album.Files - failed);
+                }
                 errors.InsertRange(0, album?.Errors ?? []);
                 errors = [.. errors.Take(MaxRecentErrors)];
                 await PublishAsync(_status with
@@ -186,6 +194,8 @@ public sealed class AnalysisService(
 
     private async Task PublishAsync(AnalysisStatus status, CancellationToken ct)
     {
+        if (status.Counts is { } counts)
+            TonregalMetrics.AnalysisWaiting.Set(counts.Pending);
         _status = status;
         try
         {

@@ -11,10 +11,11 @@ internal static class HttpRetry
     /// <summary>
     /// Sendet eine Anfrage und wiederholt sie bei 503/429 (MusicBrainz drosselt so) oder
     /// Netzwerkfehlern. Die Anfrage wird für jeden Versuch neu gebaut, weil sie sich nicht zweimal
-    /// senden lässt.
+    /// senden lässt. <paramref name="throttled"/> hört jede Drosselung, auch die letzte.
     /// </summary>
     public static async Task<HttpResponseMessage> SendAsync(
-        HttpClient client, Func<HttpRequestMessage> createRequest, string service, TimeProvider time, CancellationToken ct)
+        HttpClient client, Func<HttpRequestMessage> createRequest, string service, TimeProvider time, CancellationToken ct,
+        Action? throttled = null)
     {
         for (var attempt = 1; ; attempt++)
         {
@@ -35,6 +36,7 @@ internal static class HttpRetry
 
             if (response.StatusCode is not (HttpStatusCode.ServiceUnavailable or HttpStatusCode.TooManyRequests))
                 return response;
+            throttled?.Invoke();
             if (attempt >= MaxAttempts)
                 throw new ExternalToolUnavailableException($"{service} überlastet (HTTP {(int)response.StatusCode})");
 

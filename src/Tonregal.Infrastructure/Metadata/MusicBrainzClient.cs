@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
+using Tonregal.Infrastructure.Monitoring;
 using Tonregal.Infrastructure.Persistence;
 
 namespace Tonregal.Infrastructure.Metadata;
@@ -59,11 +60,32 @@ public sealed class MusicBrainzClient(
         if (cached is not null && cached.FetchedAt > time.GetUtcNow().AddDays(-options.Value.CacheDays))
             return JsonSerializer.Deserialize<T>(cached.Json, Json);
 
-        using var response = await HttpRetry.SendAsync(http, () => new HttpRequestMessage(HttpMethod.Get, path), "MusicBrainz", time, ct);
+        HttpResponseMessage sent;
+        try
+        {
+            sent = await HttpRetry.SendAsync(http, () => new HttpRequestMessage(HttpMethod.Get, path), "MusicBrainz", time, ct,
+                () => TonregalMetrics.MusicBrainzRequests.WithLabels("rate_limited").Inc());
+        }
+        catch (ExternalToolUnavailableException)
+        {
+            TonregalMetrics.MusicBrainzRequests.WithLabels("error").Inc();
+            throw;
+        }
+
+        using var response = sent;
         if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            TonregalMetrics.MusicBrainzRequests.WithLabels("none").Inc();
             return null;
+        }
+
         if (!response.IsSuccessStatusCode)
+        {
+            TonregalMetrics.MusicBrainzRequests.WithLabels("error").Inc();
             throw new ExternalToolUnavailableException($"MusicBrainz: HTTP {(int)response.StatusCode} für {path}");
+        }
+
+        TonregalMetrics.MusicBrainzRequests.WithLabels("match").Inc();
 
         var json = await response.Content.ReadAsStringAsync(ct);
         var result = JsonSerializer.Deserialize<T>(json, Json);

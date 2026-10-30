@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
+using Tonregal.Infrastructure.Monitoring;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Hubs;
 
@@ -105,6 +106,7 @@ public sealed class BackupService(
             });
             var run = await scope.ServiceProvider.GetRequiredService<IBackupRunner>().RunAsync(progress, current.Token);
             logger.LogInformation("Backup {Status}: {Files} Datei(en), {Bytes} Bytes", run.Status, run.FilesSynced, run.BytesSynced);
+            TonregalMetrics.BackupRuns.WithLabels(run.Status == BackupStatus.Succeeded ? "succeeded" : "failed").Inc();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -113,6 +115,7 @@ public sealed class BackupService(
         catch (Exception e)
         {
             logger.LogError(e, "Backup-Lauf abgebrochen");
+            TonregalMetrics.BackupRuns.WithLabels("failed").Inc();
         }
         finally
         {
@@ -163,6 +166,8 @@ public sealed class BackupService(
     private async Task PublishAsync(BackupStatusDto status, CancellationToken ct)
     {
         _status = status;
+        if (status.LastSuccessAt is { } success)
+            TonregalMetrics.BackupLastSuccess.Set(success.ToUnixTimeSeconds());
         try
         {
             await hub.Clients.All.SendAsync(StatusEvent, status, ct);

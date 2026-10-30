@@ -7,6 +7,7 @@ using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Tonregal.Domain.Entities;
+using Tonregal.Infrastructure.Monitoring;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Web.Hubs;
 using Tonregal.Web.Library;
@@ -129,6 +130,8 @@ public sealed class InboxService(
                 if (job is null)
                     break;
                 processed++;
+                if (ResultOf(job) is { } result)
+                    TonregalMetrics.InboxFiles.WithLabels(result).Inc();
                 await PublishAsync(_status with { CurrentPath = job.SourcePath, Processed = processed, Waiting = sync.Waiting }, ct);
                 if (job.Source == FileSource.Legacy)
                     legacyImported += await ImportLegacyGroupAsync(job.Group, ct);
@@ -176,6 +179,7 @@ public sealed class InboxService(
             {
                 logger.LogWarning(e, "Übernahme von Job {Id} fehlgeschlagen", request.Id);
                 failed++;
+                TonregalMetrics.InboxFiles.WithLabels("failed").Inc();
                 continue;
             }
 
@@ -183,6 +187,7 @@ public sealed class InboxService(
                 imported++;
             else
                 failed++;
+            TonregalMetrics.InboxFiles.WithLabels(job.State == ImportState.Imported ? "imported" : "failed").Inc();
             await PublishAsync(_status with { CurrentPath = job.SourcePath, Imported = imported, ImportFailed = failed, ImportsPending = _imports.Count }, ct);
             if (job.Source == FileSource.Api)
                 await SendAsync(Api.IngestApi.StatusEvent, Api.IngestJobDto.From(job), ct);
@@ -221,10 +226,25 @@ public sealed class InboxService(
             var job = await scope.ServiceProvider.GetRequiredService<ILibraryImporter>().ImportAsync(id, ct);
             if (job.State == ImportState.Imported)
                 imported++;
+            TonregalMetrics.InboxFiles.WithLabels(job.State == ImportState.Imported ? "imported" : "failed").Inc();
         }
 
         return imported;
     }
+
+    /// <summary>
+    /// Wie eine abgeglichene Datei für <c>tonregal_inbox_files_total</c> zählt; <c>null</c> für eine, die
+    /// verschwunden ist, bevor sie an der Reihe war.
+    /// </summary>
+    public static string? ResultOf(ImportJob job) => job.State switch
+    {
+        ImportState.Matched => "matched",
+        ImportState.Imported => "imported",
+        ImportState.Rejected when job.Error == ImportJob.VanishedReason => null,
+        ImportState.Rejected => "duplicate",
+        ImportState.NeedsReview when job.Error is not null => "failed",
+        _ => "unmatched",
+    };
 
     private async Task RequestRunLaterAsync(TimeSpan delay, CancellationToken ct)
     {
