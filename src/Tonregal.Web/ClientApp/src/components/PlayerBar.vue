@@ -5,12 +5,14 @@ import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
 import { api, formatDuration } from '@/api'
 import { usePlayerStore } from '@/stores/player'
+import LyricsPanel from './LyricsPanel.vue'
 
 const player = usePlayerStore()
 const audio = ref<HTMLAudioElement | null>(null)
 const position = ref(0)
 const duration = ref(0)
 const queueVisible = ref(false)
+const lyricsVisible = ref(false)
 const error = ref<string | null>(null)
 
 // Navidrome zählt ein Stück als gehört nach der Hälfte, spätestens nach 4 Minuten (wie Last.fm).
@@ -97,9 +99,13 @@ function onError() {
 }
 
 function seek(event: Event) {
+  seekTo(Number((event.target as HTMLInputElement).value))
+}
+
+function seekTo(seconds: number) {
   const el = audio.value
   if (!el) return
-  el.currentTime = Number((event.target as HTMLInputElement).value)
+  el.currentTime = seconds
   position.value = el.currentTime
 }
 
@@ -202,10 +208,20 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
           @click="player.toggle()"
         />
         <Button icon="pi pi-step-forward" text rounded aria-label="Weiter" :disabled="player.index >= player.queue.length - 1" data-testid="player-next" @click="player.next()" />
+        <Button icon="pi pi-align-left" text rounded aria-label="Songtext" data-testid="player-lyrics" @click="lyricsVisible = true" />
         <Button icon="pi pi-list" text rounded aria-label="Warteschlange" data-testid="player-queue" @click="queueVisible = true" />
       </div>
     </div>
   </div>
+  <Drawer v-model:visible="lyricsVisible" position="right" class="!w-full sm:!w-[28rem]">
+    <template #header>
+      <div v-if="player.current" class="min-w-0">
+        <div class="truncate font-semibold">{{ player.current.title }}</div>
+        <div class="truncate text-sm text-surface-500">{{ player.current.artist }}</div>
+      </div>
+    </template>
+    <LyricsPanel v-if="player.current" :track-id="player.current.trackId" :position="position" @seek="seekTo" />
+  </Drawer>
   <Drawer v-model:visible="queueVisible" header="Warteschlange" position="right" class="!w-full sm:!w-96">
     <ol class="flex flex-col">
       <li

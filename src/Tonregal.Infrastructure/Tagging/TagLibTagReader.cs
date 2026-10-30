@@ -58,6 +58,12 @@ public sealed class TagLibTagReader : ITagReader
             : new EmbeddedPicture(picture.Data.Data, string.IsNullOrEmpty(picture.MimeType) ? "image/jpeg" : picture.MimeType);
     }
 
+    public string? ReadLyrics(string path)
+    {
+        using var file = Open(path);
+        return NullIfEmpty(file.Tag.Lyrics);
+    }
+
     private static File Open(string path)
     {
         try

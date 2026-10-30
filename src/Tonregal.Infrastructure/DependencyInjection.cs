@@ -11,6 +11,7 @@ using Tonregal.Infrastructure.Duplicates;
 using Tonregal.Infrastructure.Fingerprinting;
 using Tonregal.Infrastructure.Library;
 using Tonregal.Infrastructure.Import;
+using Tonregal.Infrastructure.Lyrics;
 using Tonregal.Infrastructure.Metadata;
 using Tonregal.Infrastructure.Navidrome;
 using Tonregal.Infrastructure.Persistence;
@@ -69,6 +70,11 @@ public static class DependencyInjection
         AddRateLimitedClient<AcoustIdClient>(services, AcoustIdClient.HttpClientName, AcoustIdClient.BaseAddress, TimeSpan.FromSeconds(0.34));
         AddRateLimitedClient<CoverArtArchiveClient>(services, CoverArtArchiveClient.HttpClientName, CoverArtArchiveClient.BaseAddress, TimeSpan.FromSeconds(0.2));
         services.AddScoped<ICoverArtSource>(sp => sp.GetRequiredService<CoverArtArchiveClient>());
+
+        // lrclib.net nennt kein Limit; der Player fragt ohnehin nur ein Stück auf einmal.
+        services.Configure<LyricsOptions>(configuration.GetSection(LyricsOptions.SectionName));
+        AddRateLimitedClient<LrcLibClient>(services, LrcLibClient.HttpClientName, LrcLibClient.BaseAddress, TimeSpan.FromSeconds(0.2));
+        services.AddScoped<ILyricsService, LyricsService>();
     }
 
     private static void AddRateLimitedClient<TClient>(IServiceCollection services, string name, Uri baseAddress, TimeSpan interval)

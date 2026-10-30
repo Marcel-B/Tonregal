@@ -55,7 +55,25 @@ public static class PlayerApi
                 : TypedResults.Problem("Navidrome hat den Scrobble nicht angenommen", statusCode: StatusCodes.Status503ServiceUnavailable);
         });
 
+        // Songtext für den Player: .lrc neben der Datei, eingebettet oder von lrclib.net. Ohne Text: Quelle "None", keine Zeilen.
+        player.MapGet("/tracks/{id:int}/lyrics", (int id, ILyricsService lyrics, CancellationToken ct) => LyricsAsync(id, false, lyrics, ct));
+
+        // „Neu suchen“: falscher oder fehlender Text; ein Treffer von lrclib.net ersetzt auch die .lrc.
+        player.MapPost("/tracks/{id:int}/lyrics/refresh", (int id, ILyricsService lyrics, CancellationToken ct) => LyricsAsync(id, true, lyrics, ct));
+
         return api;
+    }
+
+    private static async Task<IResult> LyricsAsync(int id, bool refresh, ILyricsService lyrics, CancellationToken ct)
+    {
+        try
+        {
+            return await lyrics.GetAsync(id, refresh, ct) is { } result ? TypedResults.Ok(result) : TypedResults.NotFound();
+        }
+        catch (ExternalToolUnavailableException e)
+        {
+            return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
     }
 
     private static RangeHeaderValue? Range(HttpRequest request) =>

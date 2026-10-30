@@ -144,3 +144,14 @@ internal sealed class SmartPlaylistConfiguration : IEntityTypeConfiguration<Smar
             new SmartPlaylist { Id = 2, Name = "Nie gehört", NeverPlayed = true, Sort = SmartPlaylistSort.Random, UpdatedAt = seeded });
     }
 }
+
+internal sealed class TrackLyricsConfiguration : IEntityTypeConfiguration<TrackLyrics>
+{
+    public void Configure(EntityTypeBuilder<TrackLyrics> b)
+    {
+        b.ToTable("Lyrics");
+        b.HasKey(x => x.TrackId);
+        b.HasOne(x => x.Track).WithOne()
+            .HasForeignKey<TrackLyrics>(x => x.TrackId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

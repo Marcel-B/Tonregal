@@ -338,6 +338,21 @@ export interface KeyCount {
   tracks: number
 }
 
+export type LyricsSource = 'None' | 'Sidecar' | 'Tag' | 'Lrclib'
+
+export interface LyricLine {
+  /** Nur bei synchronisierten Texten. */
+  timeMs: number | null
+  text: string
+}
+
+export interface SongLyrics {
+  source: LyricsSource
+  synced: boolean
+  instrumental: boolean
+  lines: LyricLine[]
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const form = body instanceof FormData
@@ -389,6 +404,10 @@ export const api = {
   streamUrl: (fileId: number) => `/api/player/files/${fileId}/stream`,
   /** submission=false meldet „läuft gerade“, true zählt das Stück in Navidrome als gehört. */
   scrobble: (fileId: number, submission: boolean) => request<void>('POST', `/player/files/${fileId}/scrobble?submission=${submission}`),
+  /** Songtext: .lrc neben der Datei, eingebettet oder von lrclib.net; ohne Treffer source 'None'. */
+  lyrics: (trackId: number) => get<SongLyrics>(`/player/tracks/${trackId}/lyrics`),
+  /** Gespeichertes übergehen und neu bei lrclib.net suchen. */
+  refreshLyrics: (trackId: number) => request<SongLyrics>('POST', `/player/tracks/${trackId}/lyrics/refresh`),
   ingestKeys: () => get<IngestKeyInfo[]>('/settings/ingest'),
   /** Neuer Key für die Quelle; der alte gilt danach nicht mehr. */
   regenerateIngestKey: (source: string) => request<IngestKeyInfo>('POST', `/settings/ingest/${encodeURIComponent(source)}/key`),

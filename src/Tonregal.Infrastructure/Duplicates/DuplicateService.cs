@@ -7,6 +7,7 @@ using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
 using Tonregal.Domain.ValueObjects;
 using Tonregal.Infrastructure.Library;
+using Tonregal.Infrastructure.Lyrics;
 using Tonregal.Infrastructure.Persistence;
 using Tonregal.Infrastructure.Tagging;
 
@@ -182,6 +183,9 @@ public sealed class DuplicateService(
             {
                 var trashed = LibraryTrash.Move(o.Trash, full, file.Path, now);
                 logger.LogInformation("Dublette {Path} → {Trash}", file.Path, trashed);
+                // Der Songtext gehört zur Datei; der des Behaltenen liegt neben diesem.
+                if (File.Exists(LyricsService.SidecarOf(full)))
+                    LibraryTrash.Move(o.Trash, LyricsService.SidecarOf(full), LyricsService.SidecarOf(file.Path), now);
                 RemoveEmptyAlbumFolder(Path.GetDirectoryName(full)!, root, o.Trash, now);
             }
 

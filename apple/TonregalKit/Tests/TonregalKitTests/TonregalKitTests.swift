@@ -161,3 +161,26 @@ final class PlayQueueTests: XCTestCase {
         XCTAssertFalse(Scrobble.due(elapsed: 10, duration: 0))
     }
 }
+
+final class LyricsTests: XCTestCase {
+    /// So antwortet `GET /api/player/tracks/{id}/lyrics`.
+    func testDecodesAndFindsCurrentLine() throws {
+        let json = """
+        {"source":"Lrclib","synced":true,"instrumental":false,
+         "lines":[{"timeMs":1000,"text":"eins"},{"timeMs":4000,"text":"zwei"},{"timeMs":9000,"text":""}]}
+        """
+        let lyrics = try JSONDecoder().decode(SongLyrics.self, from: Data(json.utf8))
+        XCTAssertEqual(lyrics.sourceLabel, "lrclib.net")
+        XCTAssertNil(lyrics.currentLine(at: 0.5))
+        XCTAssertEqual(lyrics.currentLine(at: 1), 0)
+        XCTAssertEqual(lyrics.currentLine(at: 5), 1)
+        XCTAssertEqual(lyrics.currentLine(at: 60), 2)
+    }
+
+    func testPlainTextHasNoCurrentLine() throws {
+        let json = #"{"source":"Tag","synced":false,"instrumental":false,"lines":[{"timeMs":null,"text":"Nur Text"}]}"#
+        let lyrics = try JSONDecoder().decode(SongLyrics.self, from: Data(json.utf8))
+        XCTAssertNil(lyrics.currentLine(at: 10))
+        XCTAssertEqual(lyrics.lines.first?.timeMs, nil)
+    }
+}

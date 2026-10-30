@@ -69,3 +69,18 @@ public enum SmartPlaylistSort
     Title,
     Artist,
 }
+
+public enum LyricsSource
+{
+    /// <summary>Gesucht, aber nirgends gefunden.</summary>
+    None,
+
+    /// <summary><c>.lrc</c>-Datei neben der Audiodatei.</summary>
+    Sidecar,
+
+    /// <summary>Eingebettet (ID3 USLT, Vorbis LYRICS, MP4 ©lyr).</summary>
+    Tag,
+
+    /// <summary>Von lrclib.net.</summary>
+    Lrclib,
+}

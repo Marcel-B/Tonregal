@@ -23,6 +23,17 @@ public struct TonregalClient: Sendable {
     public func albums() async throws -> [AlbumListItem] { try await get("api/library/albums") }
     public func album(_ id: Int) async throws -> AlbumDetail { try await get("api/library/albums/\(id)") }
 
+    /// Songtext aus .lrc, Tags oder lrclib.net; ohne Treffer `source == "None"` und keine Zeilen.
+    /// lrclib.net kann beim ersten Abruf eines Songtexts etwas brauchen, daher mehr Geduld als sonst.
+    public func lyrics(track id: Int) async throws -> SongLyrics {
+        try await send("api/player/tracks/\(id)/lyrics", method: "GET", timeout: 40)
+    }
+
+    /// Gespeichertes übergehen und neu bei lrclib.net suchen.
+    public func refreshLyrics(track id: Int) async throws -> SongLyrics {
+        try await send("api/player/tracks/\(id)/lyrics/refresh", method: "POST", timeout: 40)
+    }
+
     public func coverURL(album id: Int) -> URL { url("api/library/albums/\(id)/cover") }
 
     /// Über Navidrome (Transcoding, Play-Counts), sonst die Datei selbst; Range-Anfragen gehen durch.
@@ -41,9 +52,12 @@ public struct TonregalClient: Sendable {
         URL(string: path, relativeTo: server)!.absoluteURL
     }
 
-    private func get<T: Decodable>(_ path: String) async throws -> T {
+    private func get<T: Decodable>(_ path: String) async throws -> T { try await send(path, method: "GET") }
+
+    private func send<T: Decodable>(_ path: String, method: String, timeout: TimeInterval = 20) async throws -> T {
         var request = URLRequest(url: url(path))
-        request.timeoutInterval = 20
+        request.httpMethod = method
+        request.timeoutInterval = timeout
         let data: Data, response: URLResponse
         do {
             (data, response) = try await session.data(for: request)

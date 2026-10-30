@@ -42,4 +42,7 @@ public interface ITagReader
 
     /// <summary>Eingebettetes Cover (Front-Cover bevorzugt) oder <c>null</c>.</summary>
     EmbeddedPicture? ReadCover(string path);
+
+    /// <summary>Eingebetteter Songtext (ID3 USLT, Vorbis <c>LYRICS</c>, MP4 <c>©lyr</c>), roh, ggf. mit LRC-Zeitmarken.</summary>
+    string? ReadLyrics(string path);
 }
