@@ -44,6 +44,8 @@ public sealed record RetryAllResponse(int Count);
 public sealed record LegacySummary(
     string Path, bool Exists, int Total, int Pending, int Matched, int NeedsReview, int Imported, int AlreadyInLibrary, int Rejected);
 
+public sealed record LegacyCleanupRequest(IReadOnlyList<int> JobIds);
+
 public sealed record ImportJobCandidates(int JobId, Guid? SelectedRecordingId, Guid? SelectedReleaseId, IReadOnlyList<RecordingCandidate> Candidates);
 
 public static class InboxApi
@@ -184,6 +186,36 @@ public static class InboxApi
                 return Results.Problem($"Den Altbestand-Ordner {options.Value.Legacy} gibt es nicht", statusCode: StatusCodes.Status404NotFound);
             service.RequestLegacyRun();
             return Results.Accepted("/api/inbox/legacy", service.Status);
+        });
+
+        // „Erledigtes aufräumen“: erst die Vorschau, dann genau deren Dateien, jede noch einmal geprüft.
+        inbox.MapGet("/legacy/cleanup", async Task<IResult> (ILegacyCleanup cleanup, CancellationToken ct) =>
+        {
+            try
+            {
+                return TypedResults.Ok(await cleanup.PreviewAsync(ct));
+            }
+            catch (LibraryUnavailableException e)
+            {
+                return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        });
+
+        inbox.MapPost("/legacy/cleanup", async Task<IResult> (
+            LegacyCleanupRequest request, ILegacyCleanup cleanup, LibraryWriteLock writeLock, CancellationToken ct) =>
+        {
+            if (request.JobIds.Count == 0)
+                return TypedResults.Problem("Keine Dateien zum Aufräumen gewählt", statusCode: StatusCodes.Status400BadRequest);
+            if (writeLock.Holder is { } holder)
+                return TypedResults.Problem($"Gerade läuft {holder}, bitte danach noch einmal", statusCode: StatusCodes.Status409Conflict);
+            try
+            {
+                return TypedResults.Ok(await cleanup.CleanAsync(request.JobIds.Distinct().ToList(), ct));
+            }
+            catch (LibraryUnavailableException e)
+            {
+                return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
         });
 
         // Datei bleibt in der Inbox, bekommt aber keinen neuen Job, solange sie sich nicht ändert.

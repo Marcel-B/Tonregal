@@ -10,6 +10,7 @@ import SelectButton from 'primevue/selectbutton'
 import Dialog from 'primevue/dialog'
 import CandidateTable from '@/components/CandidateTable.vue'
 import InboxUpload from '@/components/InboxUpload.vue'
+import LegacyCleanup from '@/components/LegacyCleanup.vue'
 import ReleaseCover from '@/components/ReleaseCover.vue'
 import { useStatusStore } from '@/stores/status'
 import {
@@ -281,6 +282,7 @@ async function select(candidate: RecordingCandidate) {
         data-testid="start-legacy"
         @click="startLegacy"
       />
+      <LegacyCleanup :disabled="legacy?.exists === false" @done="load" />
     </template>
     <template v-else>
       <Button label="Inbox prüfen" icon="pi pi-refresh" severity="secondary" size="small" :loading="status.inbox?.running" @click="scan" />
