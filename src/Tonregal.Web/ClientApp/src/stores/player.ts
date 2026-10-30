@@ -14,6 +14,7 @@ export interface QueueItem {
 }
 
 const storageKey = 'tonregal.player'
+const positionKey = 'tonregal.player.position'
 
 /** Wie in der Musik-App: aus, die ganze Warteschlange, das laufende Stück. */
 export type RepeatMode = 'off' | 'all' | 'one'
@@ -54,6 +55,8 @@ export const usePlayerStore = defineStore('player', () => {
   const playing = ref(false)
   const startToken = ref(0)
   const repeat = ref<RepeatMode>('off')
+  /** Der große Player über dem ganzen Bildschirm ist offen. */
+  const expanded = ref(false)
   const current = computed(() => queue.value[index.value] ?? null)
 
   try {
@@ -153,10 +156,51 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  /**
+   * Verschiebt einen Eintrag; `to` ist die Position, die er danach hat. Dasselbe Stück kann mehrfach in der Queue
+   * stehen, daher wandert der Index mit, statt das laufende Stück zu suchen.
+   */
+  function move(from: number, to: number) {
+    const items = queue.value
+    if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return
+    const [moved] = items.splice(from, 1)
+    items.splice(to, 0, moved!)
+    if (index.value === from) index.value = to
+    else if (from < index.value && to >= index.value) index.value--
+    else if (from > index.value && to <= index.value) index.value++
+  }
+
+  /**
+   * Merkt sich, wo das laufende Stück steht, damit es nach dem Neuladen dort weitergeht wie in der App. Eigener
+   * Schlüssel, weil die Stelle sich ständig ändert und die Queue dafür nicht jedes Mal neu geschrieben werden soll.
+   */
+  function rememberPosition(seconds: number) {
+    if (!current.value) return
+    try {
+      localStorage.setItem(positionKey, JSON.stringify({ fileId: current.value.fileId, index: index.value, seconds }))
+    } catch {
+      // privates Fenster o. ä.
+    }
+  }
+
+  /** Die gemerkte Stelle, wenn sie zum laufenden Eintrag gehört, sonst 0. */
+  function savedPosition(): number {
+    try {
+      const saved = JSON.parse(localStorage.getItem(positionKey) ?? 'null')
+      if (saved && current.value && saved.fileId === current.value.fileId && saved.index === index.value && saved.seconds > 0) {
+        return Number(saved.seconds)
+      }
+    } catch {
+      // nichts gemerkt
+    }
+    return 0
+  }
+
   function clear() {
     queue.value = []
     index.value = -1
     playing.value = false
+    expanded.value = false
   }
 
   function toggle() {
@@ -169,6 +213,7 @@ export const usePlayerStore = defineStore('player', () => {
     playing,
     startToken,
     repeat,
+    expanded,
     current,
     hasNext,
     play,
@@ -183,6 +228,9 @@ export const usePlayerStore = defineStore('player', () => {
     previous,
     jump,
     remove,
+    move,
+    rememberPosition,
+    savedPosition,
     clear,
     toggle,
   }
