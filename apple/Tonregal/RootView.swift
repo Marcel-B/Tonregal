@@ -23,10 +23,17 @@ extension View {
     func libraryDestinations() -> some View {
         navigationDestination(for: Route.self) { route in
             switch route {
-            case .album(let id): AlbumView(id: id)
-            case .artist(let id): ArtistView(id: id)
+            case .album(let id): AlbumView(id: id).playerInset()
+            case .artist(let id): ArtistView(id: id).playerInset()
             }
         }
+    }
+
+    /// Die Leiste „läuft gerade“ als unterer Rand des Bildschirms. Sie sitzt in jedem Bildschirm
+    /// innerhalb des NavigationStack: um den Stack gelegt verschob sie nur den Rahmen, die Listen
+    /// darin scrollten nicht weit genug und ihr letzter Eintrag blieb unter der Leiste.
+    func playerInset() -> some View {
+        modifier(PlayerInset())
     }
 }
 
@@ -36,18 +43,16 @@ struct MainView: View {
 
     var body: some View {
         TabView {
-            NavigationStack { AlbumsView().libraryDestinations() }
-                .modifier(PlayerInset(showsPlayer: $showsPlayer))
+            NavigationStack { AlbumsView().playerInset().libraryDestinations() }
                 .tabItem { Label("Alben", systemImage: "square.stack") }
-            NavigationStack { ArtistsView().libraryDestinations() }
-                .modifier(PlayerInset(showsPlayer: $showsPlayer))
+            NavigationStack { ArtistsView().playerInset().libraryDestinations() }
                 .tabItem { Label("Interpreten", systemImage: "music.mic") }
-            NavigationStack { QueueView().libraryDestinations() }
-                .modifier(PlayerInset(showsPlayer: $showsPlayer))
+            NavigationStack { QueueView().playerInset().libraryDestinations() }
                 .tabItem { Label("Warteschlange", systemImage: "list.bullet") }
             NavigationStack { SettingsView() }
                 .tabItem { Label("Einstellungen", systemImage: "gearshape") }
         }
+        .environment(\.openNowPlaying, OpenNowPlaying { showsPlayer = true })
         .sheet(isPresented: $showsPlayer) {
             NowPlayingView()
                 .presentationDragIndicator(.visible)
@@ -55,15 +60,25 @@ struct MainView: View {
     }
 }
 
+/// Öffnet den großen Player; `MainView` setzt es für alle Bildschirme darunter.
+struct OpenNowPlaying {
+    var action: () -> Void = {}
+    func callAsFunction() { action() }
+}
+
+extension EnvironmentValues {
+    @Entry var openNowPlaying = OpenNowPlaying()
+}
+
 /// Die Leiste „läuft gerade“ über der Tab-Leiste, solange etwas in der Warteschlange steht.
 private struct PlayerInset: ViewModifier {
     @Environment(Player.self) private var player
-    @Binding var showsPlayer: Bool
+    @Environment(\.openNowPlaying) private var openNowPlaying
 
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom, spacing: 0) {
             if player.current != nil {
-                PlayerBar { showsPlayer = true }
+                PlayerBar { openNowPlaying() }
             }
         }
     }
