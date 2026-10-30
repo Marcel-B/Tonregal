@@ -245,7 +245,7 @@ public static class InboxApi
         {
             var ids = request.JobIds.Distinct().ToList();
             var matched = await db.ImportJobs
-                .Where(j => ids.Contains(j.Id) && j.State == ImportState.Matched && j.SelectedReleaseId != null)
+                .Where(j => ids.Contains(j.Id) && j.State == ImportState.Matched && (j.SelectedReleaseId != null || j.SelectedRecordingId != null))
                 .Select(j => j.Id)
                 .ToListAsync(ct);
             if (matched.Count == 0)

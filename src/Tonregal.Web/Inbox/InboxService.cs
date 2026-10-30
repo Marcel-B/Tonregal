@@ -211,7 +211,8 @@ public sealed class InboxService(
                 .ToList();
             if (group.Length > 0 && jobs.Any(j => j.State is ImportState.New or ImportState.Fingerprinted))
                 return 0;
-            ids = jobs.Where(j => j.State == ImportState.Matched && j.SelectedReleaseId != null).Select(j => j.Id).ToList();
+            ids = jobs.Where(j => j.State == ImportState.Matched && (j.SelectedReleaseId != null || j.SelectedRecordingId != null))
+                .Select(j => j.Id).ToList();
         }
 
         var imported = 0;

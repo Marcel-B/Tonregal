@@ -190,6 +190,19 @@ public sealed class InboxImporterTests : IDisposable
     }
 
     [Fact]
+    public void Treffer_auf_einem_Release_geht_vor_einer_Aufnahme_ohne_Release()
+    {
+        var job = new ImportJob { SourcePath = "x.mp3", DurationMs = 2000 };
+        var tags = new AudioTags { Title = "Find a Way", Artists = ["Testband"] };
+        var release = Guid.NewGuid();
+
+        InboxImporter.Decide(job, tags, [Candidate("Find a Way", 1.0) with { ReleaseId = null }, Candidate("Find a Way", 0.98, release)], 0.9);
+
+        Assert.Equal(ImportState.Matched, job.State);
+        Assert.Equal(release, job.SelectedReleaseId);
+    }
+
+    [Fact]
     public void Ohne_Titel_in_den_Tags_muss_der_Fingerprint_eindeutig_sein()
     {
         var job = new ImportJob { SourcePath = "x.mp3", DurationMs = 2000 };
