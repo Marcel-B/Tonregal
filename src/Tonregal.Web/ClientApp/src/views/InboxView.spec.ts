@@ -20,7 +20,7 @@ const job = (id: number, path: string, state: ImportJob['state'], extra: Partial
 })
 
 const response: InboxResponse = {
-  status: { running: false, currentPath: null, processed: 2, waiting: 1, imported: 0, importsPending: 0, lastRunAt: '2026-10-25T18:00:00Z', lastError: null },
+  status: { running: false, currentPath: null, processed: 2, waiting: 1, imported: 0, importsPending: 0, lastRunAt: '2026-10-25T18:00:00Z', lastError: null, importFailed: 0 },
   jobs: [
     job(1, 'Forever Young/01.mp3', 'Matched', { tagTitle: 'A Victory Of Love', tagArtist: 'Alphaville', matchScore: 0.98, selected: candidate, candidateCount: 5 }),
     job(2, 'Forever Young/02.mp3', 'NeedsReview', { matchScore: 0.72, reviewReason: 'Score 72 % unter 90 %', selected: candidate, candidateCount: 1 }),
@@ -109,6 +109,27 @@ describe('InboxView', () => {
     expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST').map(([url]) => url)).toEqual([
       '/api/inbox/4/import-unmatched',
       '/api/inbox/5/import-unmatched',
+    ])
+  })
+
+  it('zeigt, warum erkannte Dateien scheiterten, und übernimmt sie mit ihren Tags', async () => {
+    const failed = (id: number, error: string) => job(id, `Alt/0${id}.mp3`, 'Matched', { selected: candidate, error })
+    const jobs = [failed(4, 'Tags ließen sich nicht korrekt schreiben'), failed(5, 'Tags ließen sich nicht korrekt schreiben'), failed(6, 'Kaputt')]
+    const fetch = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ ...response, jobs })))
+    vi.stubGlobal('fetch', fetch)
+
+    const wrapper = mountView({ source: 'Legacy' })
+    await flushPromises()
+    const banner = wrapper.find('[data-testid="import-failed"]')
+    expect(banner.text()).toContain('3 erkannte Datei(en) ließen sich nicht mit ihrem Treffer übernehmen')
+    expect(banner.findAll('li').map((li) => li.text())).toEqual(['Tags ließen sich nicht korrekt schreiben (2)', 'Kaputt (1)'])
+    await wrapper.find('[data-testid="import-failed-unmatched"]').trigger('click')
+    await flushPromises()
+
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST').map(([url]) => url)).toEqual([
+      '/api/inbox/4/import-unmatched',
+      '/api/inbox/5/import-unmatched',
+      '/api/inbox/6/import-unmatched',
     ])
   })
 

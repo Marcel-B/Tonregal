@@ -161,6 +161,11 @@ Byte-gleiche Dateien, die schon in der Library liegen, werden übersprungen. Kon
 (neue Inbox-Dateien gehen immer vor). Dateien ohne passenden Treffer übernimmt der Ordner-Knopf in der Zeile
 (oder „Ohne Treffer übernehmen“ für den ganzen Ordner) mit Titel, Interpret und Album aus den Tags; ohne
 Album-Tag landen sie im Sammelalbum `{Interpret}/Unbekanntes Album`.
+*Alle zu prüfenden übernehmen* (Inbox und Altbestand) bündelt die Prüfliste nach Grund (z. B. „Dauer passt zu
+keinem Treffer“); nach Bestätigung im Dialog gehen die gewählten Gründe mit ihrem Vorschlag in die Library,
+Dateien ohne Vorschlag auf Wunsch mit ihren Tags. Der Server prüft jede Datei dabei erneut. Scheitert die
+Übernahme einer erkannten Datei, steht der Grund gebündelt über der Liste, und *Mit ihren Tags übernehmen*
+holt sie ohne Treffer in die Library.
 *Erledigtes aufräumen* zeigt, welche Altbestand-Dateien nachweislich in der Library liegen, und verschiebt
 nach Bestätigung genau diese nach `Library/.trash/{Datum}/Altbestand/` (Pfad bleibt erhalten, nach 30 Tagen
 gelöscht). Nachweis heißt: Der jüngste Job hat die Datei übernommen oder als byte-gleich vorhanden erkannt, sie

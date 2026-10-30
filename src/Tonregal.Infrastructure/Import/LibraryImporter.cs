@@ -37,16 +37,21 @@ public sealed class LibraryImporter(
 
     private async Task<ImportJob> RunAsync(int jobId, Func<ImportJob, CancellationToken, Task> import, CancellationToken ct)
     {
+        // Erst die Sperre, dann der Job: So ist sein Zustand frisch, falls ihn gerade ein anderer übernahm.
+        using var _ = await writeLock.AcquireAsync("Import", ct);
         var job = await db.ImportJobs.FindAsync([jobId], ct)
             ?? throw new KeyNotFoundException($"Import-Job {jobId} gibt es nicht");
-        using var _ = await writeLock.AcquireAsync("Import", ct);
+        // Doppelt angestellt (Massenlauf und Klick): schon erledigt, kein Fehler daraus machen.
+        if (job.State == ImportState.Imported)
+            return job;
         try
         {
             await import(job, ct);
             job.Error = null;
         }
-        catch (Exception e) when (e is InvalidOperationException or InvalidDataException or IOException
-            or UnauthorizedAccessException or ExternalToolUnavailableException)
+        // Jeder Fehler bleibt am Job stehen: Ein unerwarteter hätte sonst die ganze Warteschlange
+        // abgebrochen und die Datei ohne Grund als „Erkannt“ stehen lassen.
+        catch (Exception e) when (e is not OperationCanceledException)
         {
             logger.LogWarning("Übernahme von {Path} fehlgeschlagen: {Message}", job.SourcePath, e.Message);
             job.Error = e.Message;
@@ -289,7 +294,8 @@ public sealed class LibraryImporter(
     private void Verify(string path, ReleaseTrack track)
     {
         var written = tagReader.Read(path).Tags;
-        if (written.Title != track.Title || written.MusicBrainzRecordingId != track.RecordingId)
+        // Der Leser kürzt Leerzeichen am Rand; manche MusicBrainz-Titel haben welche.
+        if ((written.Title ?? "") != track.Title.Trim() || written.MusicBrainzRecordingId != track.RecordingId)
             throw new InvalidDataException($"Tags ließen sich nicht korrekt schreiben (gelesen: „{written.Title}“)");
     }
 
