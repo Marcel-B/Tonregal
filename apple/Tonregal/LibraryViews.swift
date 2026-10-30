@@ -145,13 +145,18 @@ struct ArtistView: View {
                 }
             }
         }
-        .task(id: id) {
-            guard let client = model.client else { return }
-            do {
-                artist = try await client.artist(id)
-            } catch {
-                self.error = error.localizedDescription
-            }
+        .refreshable { await load() }
+        .task(id: id) { await load() }
+    }
+
+    private func load() async {
+        guard let client = model.client else { return }
+        do {
+            artist = try await client.artist(id)
+            error = nil
+        } catch is CancellationError {
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 }
@@ -174,16 +179,20 @@ struct AlbumView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: id) {
-            guard let client = model.client else { return }
-            do {
-                let loaded = try await client.album(id)
-                album = loaded
-                // Bewertet wird die Datei, die der Player spielt: die bevorzugte des Tracks.
-                await player.loadRatings(files: QueueItem.album(loaded).map(\.fileId))
-            } catch {
-                self.error = error.localizedDescription
-            }
+        .task(id: id) { await load() }
+    }
+
+    private func load() async {
+        guard let client = model.client else { return }
+        do {
+            let loaded = try await client.album(id)
+            album = loaded
+            error = nil
+            // Bewertet wird die Datei, die der Player spielt: die bevorzugte des Tracks.
+            await player.loadRatings(files: QueueItem.album(loaded).map(\.fileId))
+        } catch is CancellationError {
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 
@@ -237,6 +246,8 @@ struct AlbumView: View {
             }
         }
         .listStyle(.plain)
+        // Neue Titel eines Albums, das schon offen ist (etwa aus Tonwerk-AI übernommen), ohne zurückzugehen.
+        .refreshable { await load() }
         .toolbar {
             Menu {
                 Button {

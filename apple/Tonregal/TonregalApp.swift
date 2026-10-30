@@ -16,6 +16,8 @@ struct TonregalApp: App {
             // iOS beendet eine Hintergrund-App ohne Bescheid; Schlange und Position vorher sichern.
             if phase != .active {
                 model.player.save()
+            } else {
+                Task { await model.refreshLibrary() }
             }
         }
     }
