@@ -35,10 +35,13 @@ const error = ref<string | null>(null)
 const loaded = ref(false)
 
 async function load() {
+  lastLoad = Date.now()
   try {
     const response = await api.inbox(props.source)
     jobs.value = response.jobs
-    status.inbox = response.status
+    // Nur bei echter Änderung setzen: Jede Zuweisung löst den Watcher unten aus, und der lud sonst
+    // im Kreis neu, solange die Seite offen war (bei Tausenden Zeilen spürbar zäh).
+    if (JSON.stringify(status.inbox) !== JSON.stringify(response.status)) status.inbox = response.status
     legacy.value = isLegacy.value ? await api.legacy() : null
     error.value = null
   } catch (e) {
@@ -48,18 +51,28 @@ async function load() {
   }
 }
 
-// Jeder Fortschritt der Pipeline kommt per SignalR; die Liste kurz danach neu laden.
+// Jeder Fortschritt der Pipeline kommt per SignalR, beim Massenlauf für jede Datei. Die Liste kurz
+// danach neu laden, aber höchstens alle zwei Sekunden, sonst rendert die Tabelle nur noch.
+const reloadEvery = 2000
+let lastLoad = 0
 let reloadTimer: ReturnType<typeof setTimeout> | undefined
 watch(
   () => status.inbox,
   () => {
-    clearTimeout(reloadTimer)
-    reloadTimer = setTimeout(load, 300)
+    if (reloadTimer) return
+    reloadTimer = setTimeout(
+      () => {
+        reloadTimer = undefined
+        load()
+      },
+      Math.max(300, lastLoad + reloadEvery - Date.now()),
+    )
   },
 )
 onMounted(load)
 watch(() => props.source, () => {
   filter.value = 'all'
+  first.value = 0
   load()
 })
 onUnmounted(() => clearTimeout(reloadTimer))
@@ -83,6 +96,47 @@ const filterOptions = computed(() =>
   ).map(([value, label]) => ({ value, label: `${label} (${jobs.value.filter((j) => stateFilter[value](j.state)).length})` })),
 )
 const visibleJobs = computed(() => jobs.value.filter((j) => stateFilter[filter.value](j.state)))
+
+// Seitenweise anzeigen: Der Altbestand bringt schnell Tausend Zeilen mit Cover und Knöpfen,
+// die alle auf einmal den Browser ausbremsen. Die Seitengröße merkt sich der Browser.
+const rowOptions = [50, 100, 200]
+const rows = ref(readRows())
+const first = ref(0)
+function readRows() {
+  try {
+    const stored = Number(localStorage.getItem('tonregal.inbox.rows'))
+    return rowOptions.includes(stored) ? stored : 50
+  } catch {
+    return 50
+  }
+}
+watch(rows, (value) => {
+  try {
+    localStorage.setItem('tonregal.inbox.rows', String(value))
+  } catch {
+    // privates Fenster: dann eben nicht merken
+  }
+})
+watch(filter, () => (first.value = 0))
+// Schrumpft die Liste (übernommen, verworfen), nicht auf einer leeren Seite hinter dem Ende stehen bleiben.
+watch(
+  () => visibleJobs.value.length,
+  (length) => {
+    if (first.value >= length) first.value = Math.max(0, Math.floor((length - 1) / rows.value) * rows.value)
+  },
+)
+
+// Ordnerknöpfe: einmal je Neuladen gruppieren statt je Kopfzeile die ganze Liste zu durchsuchen.
+const byGroup = computed(() => {
+  const groups = new Map<string, { matched: ImportJob[]; unmatched: ImportJob[] }>()
+  for (const job of jobs.value) {
+    let entry = groups.get(job.group)
+    if (!entry) groups.set(job.group, (entry = { matched: [], unmatched: [] }))
+    if (job.state === 'Matched') entry.matched.push(job)
+    else if (job.state === 'NeedsReview' && !job.selected) entry.unmatched.push(job)
+  }
+  return groups
+})
 
 const stateTag: Record<ImportState, { label: string; severity: string }> = {
   New: { label: 'In Arbeit', severity: 'secondary' },
@@ -114,7 +168,8 @@ const progress = computed(() => {
   return parts.join(' · ')
 })
 
-const matched = (group?: string) => jobs.value.filter((j) => j.state === 'Matched' && (group === undefined || j.group === group))
+const allMatched = computed(() => jobs.value.filter((j) => j.state === 'Matched'))
+const matched = (group?: string) => (group === undefined ? allMatched.value : (byGroup.value.get(group)?.matched ?? []))
 const actionError = ref<string | null>(null)
 
 async function run(action: () => Promise<unknown>) {
@@ -139,7 +194,7 @@ const accept = (job: ImportJob) =>
   })
 // Kein Treffer passt: mit Titel, Interpret und Album aus den Tags übernehmen, ohne Album ins Sammelalbum.
 const importUnmatched = (job: ImportJob) => run(() => api.importUnmatched(job.id))
-const unmatched = (group: string) => jobs.value.filter((j) => j.state === 'NeedsReview' && !j.selected && j.group === group)
+const unmatched = (group: string) => byGroup.value.get(group)?.unmatched ?? []
 const importGroupUnmatched = (group: string) =>
   run(async () => {
     for (const job of unmatched(group)) await api.importUnmatched(job.id)
@@ -200,16 +255,19 @@ function move(step: number) {
   const list = visibleJobs.value
   if (!list.length) return
   const index = list.findIndex((j) => j.id === focusedId.value)
-  const next = index < 0 ? 0 : Math.min(list.length - 1, Math.max(0, index + step))
+  const next = index < 0 ? first.value : Math.min(list.length - 1, Math.max(0, index + step))
   focusedId.value = list[next]!.id
+  // Die gewählte Zeile kann auf der nächsten oder vorigen Seite liegen.
+  first.value = Math.floor(next / rows.value) * rows.value
   requestAnimationFrame(() => document.querySelector('.focused-row')?.scrollIntoView?.({ block: 'nearest' }))
 }
 // Nach einer Aktion verschwindet die Zeile meist; dann rückt die nächste nach.
 watch(visibleJobs, (list, before) => {
   if (focusedId.value === null || list.some((j) => j.id === focusedId.value)) return
   const index = before.findIndex((j) => j.id === focusedId.value)
-  const next = list[Math.min(Math.max(index, 0), list.length - 1)]
-  focusedId.value = next?.id ?? null
+  const nextIndex = Math.min(Math.max(index, 0), list.length - 1)
+  focusedId.value = list[nextIndex]?.id ?? null
+  if (nextIndex >= 0) first.value = Math.floor(nextIndex / rows.value) * rows.value
 })
 function onKey(event: KeyboardEvent) {
   if (event.metaKey || event.ctrlKey || event.altKey || candidatesVisible.value || reportVisible.value) return
@@ -322,9 +380,16 @@ async function select(candidate: RecordingCandidate) {
       </span>
     </div>
     <DataTable
+      v-model:first="first"
+      v-model:rows="rows"
       :value="visibleJobs"
       data-key="id"
       size="small"
+      :paginator="visibleJobs.length > rowOptions[0]!"
+      :rows-per-page-options="rowOptions"
+      paginator-position="both"
+      current-page-report-template="{first}–{last} von {totalRecords}"
+      paginator-template="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
       row-group-mode="subheader"
       group-rows-by="group"
       :row-class="(job: ImportJob) => (job.id === focusedId ? 'focused-row !bg-primary-50 dark:!bg-primary-900/30' : '')"
