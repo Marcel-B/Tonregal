@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.Configure<IngestOptions>(configuration.GetSection(IngestOptions.SectionName));
         services.AddScoped<IIngestService, IngestService>();
         services.AddScoped<IIngestKeys, IngestKeys>();
+        services.AddScoped<ILegacyCleanup, LegacyCleanup>();
         services.AddScoped<IDuplicateService, DuplicateService>();
         services.AddScoped<IReleaseAligner, ReleaseAligner>();
         services.AddMetadataServices(configuration);

@@ -153,12 +153,17 @@ gemeinsam in einem Ordner `Upload {Datum Uhrzeit}`.
 
 **Altbestand:** MP3-Sicherungskopien liegen in `Musik/Altbestand` (anderer Ort: `Tonregal:LegacyPath` in
 `appsettings.Production.json`). *Altbestand einlesen* auf der Seite *Altbestand* startet den Massenlauf:
-Tonregal liest dort nur und verändert nichts. Tags mit MusicBrainz-IDs gehen vor, der Fingerprint bestätigt;
+Tonregal liest dort nur und verändert nichts, bis man *Erledigtes aufräumen* bestätigt. Tags mit MusicBrainz-IDs gehen vor, der Fingerprint bestätigt;
 ist ein Ordner fertig abgeglichen, werden seine erkannten Dateien ohne Klick in die Library kopiert.
 Byte-gleiche Dateien, die schon in der Library liegen, werden übersprungen. Konflikte landen in der Prüfliste
 (neue Inbox-Dateien gehen immer vor). Dateien ohne passenden Treffer übernimmt der Ordner-Knopf in der Zeile
 (oder „Ohne Treffer übernehmen“ für den ganzen Ordner) mit Titel, Interpret und Album aus den Tags; ohne
-Album-Tag landen sie im Sammelalbum `{Interpret}/Unbekanntes Album`. Die
+Album-Tag landen sie im Sammelalbum `{Interpret}/Unbekanntes Album`.
+*Erledigtes aufräumen* zeigt, welche Altbestand-Dateien nachweislich in der Library liegen, und verschiebt
+nach Bestätigung genau diese nach `Library/.trash/{Datum}/Altbestand/` (Pfad bleibt erhalten, nach 30 Tagen
+gelöscht). Nachweis heißt: Der jüngste Job hat die Datei übernommen oder als byte-gleich vorhanden erkannt, sie
+ist seitdem unverändert, und die Library-Datei liegt noch da (die beim Import angelegte, ihr Pfad, dieselbe
+MusicBrainz-Aufnahme oder derselbe Hash). Alles andere bleibt, auch Covers und andere Nicht-Audio-Dateien. Die
 Prüflisten von Inbox und Altbestand lassen sich per Tastatur abarbeiten: `j`/`k` Zeile, `Enter` übernehmen,
 `l` Kandidaten, `u` ohne Treffer, `r` neu abgleichen, `x` verwerfen.
 

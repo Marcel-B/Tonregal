@@ -15,7 +15,7 @@ public static class LibraryTrash
     /// <summary>Verschiebt <paramref name="source"/> nach <c>{trash}/{Datum}/{relative}</c>, ohne etwas zu überschreiben.</summary>
     public static string Move(string trashRoot, string source, string relative, DateTimeOffset now)
     {
-        var target = Path.Combine(trashRoot, now.UtcDateTime.ToString(DateFormat, CultureInfo.InvariantCulture), relative);
+        var target = Path.Combine(trashRoot, Day(now), relative);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         var free = target;
         for (var i = 2; File.Exists(free); i++)
@@ -23,6 +23,9 @@ public static class LibraryTrash
         File.Move(source, free);
         return free;
     }
+
+    /// <summary>Name des Tagesordners, in den <see cref="Move"/> heute verschiebt.</summary>
+    public static string Day(DateTimeOffset now) => now.UtcDateTime.ToString(DateFormat, CultureInfo.InvariantCulture);
 
     public static int Purge(string trashRoot, DateTimeOffset now)
     {

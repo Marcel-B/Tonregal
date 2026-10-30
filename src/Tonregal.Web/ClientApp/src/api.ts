@@ -194,6 +194,39 @@ export interface LegacySummary {
   rejected: number
 }
 
+/** Altbestand-Datei, die nachweislich in der Library liegt und aufgeräumt werden kann. */
+export interface LegacyCleanupFile {
+  jobId: number
+  path: string
+  sizeBytes: number
+  /** Lag byte-gleich schon in der Library, statt von Tonregal kopiert zu werden. */
+  alreadyInLibrary: boolean
+  /** Die Library-Datei, die das belegt. */
+  libraryPath: string
+}
+
+export interface LegacyCleanupSkipped {
+  jobId: number
+  path: string
+  reason: string
+}
+
+export interface LegacyCleanupPreview {
+  /** Relativ zur Library, z. B. „.trash/2026-10-30/Altbestand“. */
+  trashFolder: string
+  files: LegacyCleanupFile[]
+  skipped: LegacyCleanupSkipped[]
+  count: number
+  sizeBytes: number
+}
+
+export interface LegacyCleanupResult {
+  moved: number
+  sizeBytes: number
+  trashFolder: string
+  skipped: LegacyCleanupSkipped[]
+}
+
 export interface InboxStatus {
   running: boolean
   currentPath: string | null
@@ -399,6 +432,9 @@ export const api = {
   importUnmatched: (jobId: number) => request<ImportJob>('POST', `/inbox/${jobId}/import-unmatched`),
   legacy: () => get<LegacySummary>('/inbox/legacy'),
   scanLegacy: () => request<InboxStatus>('POST', '/inbox/legacy/scan'),
+  legacyCleanup: () => get<LegacyCleanupPreview>('/inbox/legacy/cleanup'),
+  /** Verschiebt genau diese Dateien der Vorschau nach Library/.trash; der Server prüft jede erneut. */
+  cleanLegacy: (jobIds: number[]) => request<LegacyCleanupResult>('POST', '/inbox/legacy/cleanup', { jobIds }),
   releaseCoverUrl: (releaseId: string) => `https://coverartarchive.org/release/${releaseId}/front-250`,
   fetchCover: (albumId: number) => request<void>('POST', `/library/albums/${albumId}/cover`),
   alignRelease: (albumId: number) => request<ReleaseAlignResult>('POST', `/library/albums/${albumId}/align-release`),
