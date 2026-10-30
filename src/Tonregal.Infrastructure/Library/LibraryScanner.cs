@@ -50,9 +50,14 @@ public sealed class LibraryScanner(
         await LoadCachesAsync(ct);
         var existing = await db.AudioFiles.Include(f => f.Track).ToDictionaryAsync(f => f.Path, StringComparer.Ordinal, ct);
         // Frisch aus der Inbox übernommene Dateien mit ihrem Import-Job verknüpfen.
-        var imported = await db.ImportJobs
-            .Where(j => j.State == ImportState.Imported && j.AudioFileId == null && j.LibraryPath != null)
-            .ToDictionaryAsync(j => j.LibraryPath!, StringComparer.Ordinal, ct);
+        // Ein Pfad kann mehrere solcher Jobs haben: Wird eine Datei gelöscht (Dublette verworfen, Datei
+        // verschwunden), setzt die Datenbank AudioFileId ihres Jobs zurück, und eine spätere Übernahme kann
+        // auf den frei gewordenen Pfad fallen. Die Datei dort gehört dem jüngsten Job.
+        var imported = (await db.ImportJobs
+                .Where(j => j.State == ImportState.Imported && j.AudioFileId == null && j.LibraryPath != null)
+                .ToListAsync(ct))
+            .GroupBy(j => j.LibraryPath!, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.MaxBy(j => j.Id)!, StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var errors = new List<ScanError>();
         int added = 0, updated = 0, unchanged = 0, processed = 0;
