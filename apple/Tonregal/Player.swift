@@ -21,8 +21,13 @@ final class Player {
     private(set) var duration: Double = 0
     /// Warum das laufende Stück nicht spielt (Server weg, Datei fehlt), sonst nil.
     private(set) var problem: String?
+    /// Sterne je Datei-ID, wie Navidrome sie hält; fehlt eine, ist sie unbewertet oder noch nicht geladen.
+    private(set) var ratings: [Int: Int] = [:]
+    /// Warum die letzte Bewertung nicht ankam, sonst nil.
+    var ratingProblem: String?
 
     var current: QueueItem? { queue.current }
+    var repeatMode: RepeatMode { queue.repeatMode }
 
     @ObservationIgnored private let player = AVPlayer()
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -130,6 +135,47 @@ final class Player {
         save()
     }
 
+    /// Alle Stücke eines Interpreten oder ohne `artist` die ganze Bibliothek, in zufälliger Reihenfolge vom Server.
+    func shuffle(artist: Int? = nil) async throws {
+        guard let client else { return }
+        let items = try await client.shuffle(artist: artist)
+        guard !items.isEmpty else { throw TonregalError("Keine Stücke zum Abspielen.") }
+        play(items)
+    }
+
+    func cycleRepeat() {
+        queue.repeatMode = queue.repeatMode.next
+        save()
+        updateRemoteCommands()
+    }
+
+    // MARK: Bewertung
+
+    func rating(file id: Int) -> Int { ratings[id] ?? 0 }
+
+    func loadRatings(files ids: [Int]) async {
+        guard let client, !ids.isEmpty, let loaded = try? await client.ratings(files: ids) else { return }
+        for id in ids {
+            ratings[id] = loaded[id] ?? 0
+        }
+    }
+
+    /// Sofort zeigen, bei einer Absage zurücknehmen; 0 nimmt die Bewertung zurück.
+    func rate(file id: Int, _ stars: Int) {
+        guard let client else { return }
+        let before = rating(file: id)
+        ratings[id] = stars
+        ratingProblem = nil
+        Task {
+            do {
+                try await client.rate(file: id, rating: stars)
+            } catch {
+                ratings[id] = before
+                ratingProblem = error.localizedDescription
+            }
+        }
+    }
+
     // MARK: Abspielen
 
     func toggle() {
@@ -214,6 +260,7 @@ final class Player {
         updateNowPlaying()
         updateRemoteCommands()
         loadArtwork(for: item)
+        Task { await loadRatings(files: [item.fileId]) }
         save()
     }
 
@@ -250,7 +297,7 @@ final class Player {
 
     private func ended(_ item: AVPlayerItem?) {
         guard item === player.currentItem else { return }
-        if queue.next() {
+        if queue.finished() {
             start()
         } else {
             wantsToPlay = false
@@ -322,6 +369,21 @@ final class Player {
             Task { @MainActor in self?.previous() }
             return .success
         }
+        center.changeRepeatModeCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangeRepeatModeCommandEvent else { return .commandFailed }
+            let mode: RepeatMode = switch event.repeatType {
+            case .off: .off
+            case .one: .one
+            default: .all
+            }
+            Task { @MainActor in
+                guard let self else { return }
+                self.queue.repeatMode = mode
+                self.save()
+                self.updateRemoteCommands()
+            }
+            return .success
+        }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             let position = event.positionTime
@@ -335,6 +397,11 @@ final class Player {
         let center = MPRemoteCommandCenter.shared()
         center.nextTrackCommand.isEnabled = queue.hasNext
         center.previousTrackCommand.isEnabled = current != nil
+        center.changeRepeatModeCommand.currentRepeatType = switch queue.repeatMode {
+        case .off: .off
+        case .all: .all
+        case .one: .one
+        }
     }
 
     private func updateNowPlaying() {

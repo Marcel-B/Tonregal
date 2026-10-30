@@ -184,3 +184,52 @@ final class LyricsTests: XCTestCase {
         XCTAssertEqual(lyrics.lines.first?.timeMs, nil)
     }
 }
+
+final class RepeatTests: XCTestCase {
+    private func items(_ count: Int) -> [QueueItem] {
+        (1...count).map { QueueItem(fileId: $0, trackId: $0, title: "Song \($0)", artist: "A", album: "B", albumId: 1, durationMs: 1000) }
+    }
+
+    func testRepeatAllWrapsAround() {
+        var queue = PlayQueue(items: items(2), index: 1)
+        XCTAssertFalse(queue.hasNext)
+        queue.repeatMode = .all
+        XCTAssertTrue(queue.hasNext)
+        XCTAssertTrue(queue.finished())
+        XCTAssertEqual(queue.current?.fileId, 1)
+    }
+
+    func testRepeatOneRepeatsOnlyAtTheEndOfAPiece() {
+        var queue = PlayQueue(items: items(2), index: 0, repeatMode: .one)
+        XCTAssertTrue(queue.finished())
+        XCTAssertEqual(queue.current?.fileId, 1)
+        XCTAssertTrue(queue.next(), "der Knopf schaltet trotzdem weiter")
+        XCTAssertEqual(queue.current?.fileId, 2)
+        XCTAssertFalse(queue.next())
+    }
+
+    func testOffStopsAtTheEnd() {
+        var queue = PlayQueue(items: items(1), index: 0)
+        XCTAssertFalse(queue.finished())
+        XCTAssertEqual(RepeatMode.off.next, .all)
+        XCTAssertEqual(RepeatMode.one.next, .off)
+    }
+
+    func testOldSavedQueueStillDecodes() throws {
+        let json = #"{"items":[{"fileId":1,"trackId":1,"title":"T","artist":"A","album":"B","albumId":1,"durationMs":1000}],"index":0}"#
+        let queue = try JSONDecoder().decode(PlayQueue.self, from: Data(json.utf8))
+        XCTAssertEqual(queue.repeatMode, .off)
+        XCTAssertEqual(queue.current?.fileId, 1)
+
+        var repeating = queue
+        repeating.repeatMode = .one
+        let again = try JSONDecoder().decode(PlayQueue.self, from: JSONEncoder().encode(repeating))
+        XCTAssertEqual(again, repeating)
+    }
+
+    func testShuffleAnswerDecodesAsQueue() throws {
+        let json = #"[{"fileId":21,"trackId":11,"title":"Auberge","artist":"Chris Rea","album":"Auberge","albumId":7,"durationMs":434000}]"#
+        let items = try JSONDecoder().decode([QueueItem].self, from: Data(json.utf8))
+        XCTAssertEqual(items.first?.albumId, 7)
+    }
+}

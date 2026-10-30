@@ -83,6 +83,14 @@ struct NowPlayingView: View {
                     Text("\(item.artist) – \(item.album)")
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    StarRating(rating: player.rating(file: item.fileId)) { player.rate(file: item.fileId, $0) }
+                        .padding(.top, 4)
+                    if let problem = player.ratingProblem {
+                        Text(problem)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                    }
                     if let problem = player.problem {
                         Text(problem)
                             .font(.caption)
@@ -159,7 +167,16 @@ struct NowPlayingView: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 44) {
+        HStack(spacing: 28) {
+            Button(action: player.shuffleUpcoming) {
+                Image(systemName: "shuffle")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .disabled(player.queue.upcoming.count < 2)
+            .accessibilityLabel("Rest mischen")
             Button(action: player.previous) {
                 Image(systemName: "backward.fill").font(.title)
             }
@@ -174,6 +191,7 @@ struct NowPlayingView: View {
             }
             .disabled(!player.queue.hasNext)
             .accessibilityLabel("Nächstes")
+            RepeatButton()
         }
         .buttonStyle(.plain)
     }

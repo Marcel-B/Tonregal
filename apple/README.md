@@ -7,7 +7,9 @@ Sperrbildschirm, Kontrollzentrum, AirPods, AirPlay, Unterbrechung durch Anrufe.
 Stand 0.1: Alben (zuletzt übernommene zuerst) und Interpreten mit Suche, Albumseite mit BPM/Tonart, Abspielen und
 Zufällig, „Als Nächstes“ / „Hinten anhängen“ (Wischen oder langes Drücken), Warteschlange mit Verschieben und Löschen,
 die über App-Neustarts erhalten bleibt, Scrobble an Navidrome nach der Hälfte bzw. 4 Minuten, Songtext im großen Player
-(Sprechblase unten; synchronisierte Texte laufen mit, Tippen springt). Noch nicht: Offline-Cache,
+(Sprechblase unten; synchronisierte Texte laufen mit, Tippen springt), Sterne im großen Player und im Kontextmenü eines
+Titels (gespeichert in Navidrome), Zufällig für Album, Interpret und die ganze Bibliothek, Rest mischen und Wiederholen
+(aus, alle, dieses Stück; auch über den Sperrbildschirm). Noch nicht: Offline-Cache,
 CarPlay, Playlists.
 
 ## Verbinden
@@ -21,7 +23,8 @@ und trägt die neue ein.
 
 ## Aufbau
 
-- `Tonregal/` – die App: Seiten (`RootView`, `LibraryViews`, `PlayerViews`), `AppModel`, `Player` (AVPlayer, Now Playing,
+- `Tonregal/` – die App: Seiten (`RootView`, `LibraryViews`, `PlayerViews`, `ListeningViews` mit Sternen, Zufall und
+  Wiederholen), `AppModel`, `Player` (AVPlayer, Now Playing,
   Remote Commands), Cover-Cache. Der Ordner ist mit dem Projekt synchronisiert, neue Dateien brauchen keine Projektänderung.
 - `TonregalKit/` – Swift-Paket ohne UIKit: API-Typen (Spiegel von `LibraryApi.cs`), Client, Adresse, Warteschlange,
   Scrobble-Regel. `swift test` dort läuft auf jedem Mac und in der CI.

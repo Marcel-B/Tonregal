@@ -243,8 +243,16 @@ gefunden“, liegen in der Tabelle `Lyrics`; reine oder fehlende Texte werden na
 im Songtext erzwingt es sofort (und ersetzt eine falsche `.lrc`). Eine von Hand abgelegte `.lrc` gilt immer.
 `Tonregal:Lyrics:Online=false` schaltet lrclib.net ab, `WriteSidecar=false` das Schreiben der `.lrc`.
 
+**Bewerten, Zufall, Wiederholen:** Sterne (in der Player-Leiste und in der Titelliste eines Albums; ein Klick auf
+den gesetzten Stern nimmt sie zurück) gehen per Subsonic `setRating` an Navidrome und gelten für das Konto aus
+`appsettings.Production.json`; gelesen werden sie aus `navidrome.db`. Tonregal speichert sie nicht selbst und schreibt
+sie nicht in die Tags. Eine frisch übernommene Datei lässt sich erst bewerten, wenn Navidrome sie gescannt hat.
+*Zufällig* mischt ein Album, auf einer Interpretenseite alle Stücke des Interpreten (auch Gastauftritte auf fremden
+Alben) und in der Bibliothek *Alles zufällig* bis zu 2000 Stücke (`GET /api/player/shuffle`). In der Warteschlange
+mischt *Rest mischen*, was nach dem laufenden Stück kommt. Der Wiederholen-Knopf schaltet aus → alle → dieses Stück.
+
 **Smart Playlists:** Auf der Seite *Smart Playlists* legt man Regeln an (BPM-Bereich, Tonarten mit
-„+ passende“ für Quinte hoch/runter und Paralleltonart, Genre, neu seit n Tagen, nie gehört, Sortierung,
+„+ passende“ für Quinte hoch/runter und Paralleltonart, Genre, neu seit n Tagen, nie gehört, mindestens n Sterne, Sortierung,
 Höchstzahl). Tonregal schreibt sie als `Library/Playlists/tonregal-{id}.nsp`; Navidrome liest sie beim
 nächsten Scan ein (Besitzer ist der erste Admin) und füllt sie selbst, sie erscheinen also auch in Amperfy.
 Der Dateiname hängt an der ID, ein Umbenennen ändert nur den Namen in Navidrome. Beim Löschen entfernt
@@ -252,7 +260,7 @@ Tonregal die Datei und, mit Navidrome-Zugang aus `appsettings.Production.json`, 
 Navidrome, die sonst stehen bliebe. „Neu (30 Tage)“ und „Nie gehört“ sind zum Start angelegt.
 *Abspielen* holt die Stücke, die gerade passen, von Navidrome (`getPlaylist`, das die Liste dabei neu
 auswertet) und legt sie in den Player; kennt Navidrome die Liste noch nicht, wählt Tonregal selbst aus, dann
-ohne „nie gehört“.
+ohne „nie gehört“ (die Sterne liest es dafür aus `navidrome.db`).
 
 Am iPhone in Safari *Teilen → Zum Home-Bildschirm* wählen, dann startet Tonregal wie eine App.
 

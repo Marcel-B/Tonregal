@@ -49,6 +49,10 @@ struct AlbumsView: View {
             AlbumGrid(albums: tiles)
         }
         .navigationTitle("Alben")
+        .toolbar {
+            ShuffleButton(title: "Alles zufällig")
+                .disabled(model.albums.isEmpty)
+        }
         .searchable(text: $search, prompt: "Album oder Interpret")
         .refreshable {
             ImageCache.shared.forgetMissing()
@@ -94,6 +98,10 @@ struct ArtistsView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Interpreten")
+        .toolbar {
+            ShuffleButton(title: "Alles zufällig")
+                .disabled(model.artists.isEmpty)
+        }
         .searchable(text: $search, prompt: "Interpret")
         .refreshable { await model.loadArtists() }
         .task {
@@ -124,6 +132,10 @@ struct ArtistView: View {
             }
         }
         .navigationTitle(artist?.name ?? "")
+        .toolbar {
+            // Alle Stücke des Interpreten, auch Gastauftritte auf fremden Alben.
+            ShuffleButton(artist: id)
+        }
         .overlay {
             if artist == nil {
                 if let error {
@@ -165,7 +177,10 @@ struct AlbumView: View {
         .task(id: id) {
             guard let client = model.client else { return }
             do {
-                album = try await client.album(id)
+                let loaded = try await client.album(id)
+                album = loaded
+                // Bewertet wird die Datei, die der Player spielt: die bevorzugte des Tracks.
+                await player.loadRatings(files: QueueItem.album(loaded).map(\.fileId))
             } catch {
                 self.error = error.localizedDescription
             }
@@ -288,6 +303,9 @@ private struct TrackRow: View {
                     }
                 }
                 Spacer()
+                if let item {
+                    StarsBadge(rating: player.rating(file: item.fileId))
+                }
                 Text(Duration.format(seconds: Double(track.durationMs) / 1000))
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -321,6 +339,7 @@ private struct TrackRow: View {
             if let item {
                 Button("Als Nächstes", systemImage: "text.line.first.and.arrowtriangle.forward") { player.playNext([item]) }
                 Button("Hinten anhängen", systemImage: "text.line.last.and.arrowtriangle.forward") { player.enqueue([item]) }
+                RatingMenu(fileId: item.fileId)
             }
         }
     }

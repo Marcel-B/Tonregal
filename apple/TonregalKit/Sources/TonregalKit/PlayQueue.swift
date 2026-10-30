@@ -33,19 +33,58 @@ public struct QueueItem: Codable, Sendable, Hashable {
     }
 }
 
+/// Wiederholen wie in der Musik-App, wie `RepeatMode` im Web-Client.
+public enum RepeatMode: String, Codable, Sendable, CaseIterable {
+    case off, all, one
+
+    /// Aus, alle, dieses Stück, wieder aus: so schaltet der Knopf.
+    public var next: RepeatMode {
+        switch self {
+        case .off: .all
+        case .all: .one
+        case .one: .off
+        }
+    }
+}
+
 /// Die Warteschlange ohne AVFoundation, damit sie sich testen lässt. Jede Änderung sagt, ob das laufende Stück neu
 /// geladen werden muss; der Player tut dann genau das.
 public struct PlayQueue: Codable, Sendable, Equatable {
     public private(set) var items: [QueueItem] = []
     public private(set) var index: Int?
+    public var repeatMode: RepeatMode = .off
 
-    public init(items: [QueueItem] = [], index: Int? = nil) {
+    public init(items: [QueueItem] = [], index: Int? = nil, repeatMode: RepeatMode = .off) {
         self.items = items
         self.index = index.flatMap { items.indices.contains($0) ? $0 : nil }
+        self.repeatMode = repeatMode
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case items, index, repeatMode
+    }
+
+    /// Gespeicherte Schlangen von vor dem Wiederholen haben kein `repeatMode`.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            items: try container.decode([QueueItem].self, forKey: .items),
+            index: try container.decodeIfPresent(Int.self, forKey: .index),
+            repeatMode: (try? container.decodeIfPresent(RepeatMode.self, forKey: .repeatMode)) ?? .off)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(items, forKey: .items)
+        try container.encodeIfPresent(index, forKey: .index)
+        try container.encode(repeatMode, forKey: .repeatMode)
     }
 
     public var current: QueueItem? { index.flatMap { items.indices.contains($0) ? items[$0] : nil } }
-    public var hasNext: Bool { index.map { $0 + 1 < items.count } ?? false }
+    public var hasNext: Bool {
+        guard let index else { return false }
+        return index + 1 < items.count || repeatMode == .all
+    }
     public var upcoming: ArraySlice<QueueItem> { index.map { items[min($0 + 1, items.count)...] } ?? items[...] }
 
     public mutating func play(_ newItems: [QueueItem], at position: Int = 0) {
@@ -73,11 +112,26 @@ public struct PlayQueue: Codable, Sendable, Equatable {
         return false
     }
 
-    /// Zum nächsten Stück; false am Ende der Schlange.
+    /// Zum nächsten Stück, mit „alle wiederholen“ nach dem letzten wieder zum ersten; false am Ende der Schlange.
+    /// „Dieses Stück wiederholen“ gilt hier nicht, sonst käme man per Knopf nie weiter.
     public mutating func next() -> Bool {
-        guard let index, index + 1 < items.count else { return false }
-        self.index = index + 1
+        guard let index else { return false }
+        if index + 1 < items.count {
+            self.index = index + 1
+        } else if repeatMode == .all {
+            self.index = 0
+        } else {
+            return false
+        }
         return true
+    }
+
+    /// Das Stück ist zu Ende gespielt: dasselbe noch einmal, das nächste oder false, wenn Schluss ist.
+    public mutating func finished() -> Bool {
+        if repeatMode == .one, current != nil {
+            return true
+        }
+        return next()
     }
 
     public mutating func previous() -> Bool {
