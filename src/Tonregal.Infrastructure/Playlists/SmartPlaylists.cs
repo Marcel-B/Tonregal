@@ -133,6 +133,16 @@ public sealed class SmartPlaylists(
                 Rule(w, "inTheLast", "dateadded", () => w.WriteNumberValue(days));
             if (p.NeverPlayed)
                 Rule(w, "is", "playcount", () => w.WriteNumberValue(0));
+            if (p.MinRating is { } stars)
+            {
+                Rule(w, "inTheRange", "rating", () =>
+                {
+                    w.WriteStartArray();
+                    w.WriteNumberValue(stars);
+                    w.WriteNumberValue(5);
+                    w.WriteEndArray();
+                });
+            }
             w.WriteEndArray();
 
             var (sort, order) = p.Sort switch
@@ -178,7 +188,7 @@ public sealed class SmartPlaylists(
 
     private async Task<SmartPlaylistInfo> InfoAsync(SmartPlaylist p, CancellationToken ct) => new(
         p.Id, p.Name, p.Comment, p.BpmMin, p.BpmMax, p.Keys, p.Genre, p.AddedWithinDays, p.NeverPlayed, p.Sort, p.Limit, p.UpdatedAt,
-        RelativePath(p.Id), await MatchingAsync(p, ct), ToNsp(p));
+        RelativePath(p.Id), await MatchingAsync(p, ct), ToNsp(p), p.MinRating);
 
     /// <summary>Dieselben Regeln gegen Tonregals Bibliothek; „neu“ zählt hier ab der Übernahme der ersten Datei.</summary>
     private async Task<int> MatchingAsync(SmartPlaylist p, CancellationToken ct)
@@ -187,7 +197,7 @@ public sealed class SmartPlaylists(
         return p.Limit is { } limit ? Math.Min(count, limit) : count;
     }
 
-    /// <summary>Alle Regeln außer „nie gehört“, die nur Navidrome auswerten kann.</summary>
+    /// <summary>Alle Regeln außer „nie gehört“ und der Bewertung, die in Navidrome liegen.</summary>
     private IQueryable<Track> Filtered(SmartPlaylist p)
     {
         var tracks = db.Tracks.Where(t => t.Files.Any());
@@ -242,6 +252,12 @@ public sealed class SmartPlaylists(
             .Include(t => t.Files)
             .AsNoTracking()
             .ToListAsync(ct);
+        if (playlist.MinRating is { } stars)
+        {
+            var ratings = await navidrome.RatingsAsync([.. tracks.SelectMany(t => t.Files).Select(f => f.Path)], ct);
+            tracks = [.. tracks.Where(t => t.Files.Any(f => ratings.TryGetValue(f.Path, out var r) && r >= stars))];
+        }
+
         IEnumerable<Track> ordered = playlist.Sort switch
         {
             SmartPlaylistSort.Newest => tracks.OrderByDescending(t => t.Files.Min(f => f.AddedAt)),
@@ -286,9 +302,12 @@ public sealed class SmartPlaylists(
             throw new ArgumentException("Tage zwischen 1 und 3650", "addedWithinDays");
         if (input.Limit is < 1 or > 10000)
             throw new ArgumentException("Höchstzahl zwischen 1 und 10000", "limit");
+        if (input.MinRating is < 1 or > 5)
+            throw new ArgumentException("Bewertung zwischen 1 und 5 Sternen", "minRating");
         if (!Enum.IsDefined(input.Sort))
             throw new ArgumentException("Unbekannte Sortierung", "sort");
-        if (input.BpmMin is null && input.BpmMax is null && keys.Count == 0 && genre is null && input.AddedWithinDays is null && !input.NeverPlayed)
+        if (input.BpmMin is null && input.BpmMax is null && keys.Count == 0 && genre is null && input.AddedWithinDays is null && !input.NeverPlayed
+            && input.MinRating is null)
             throw new ArgumentException("Mindestens eine Regel setzen", "rules");
 
         var lower = name.ToLowerInvariant();
@@ -304,6 +323,7 @@ public sealed class SmartPlaylists(
         playlist.Genre = genre;
         playlist.AddedWithinDays = input.AddedWithinDays;
         playlist.NeverPlayed = input.NeverPlayed;
+        playlist.MinRating = input.MinRating;
         playlist.Sort = input.Sort;
         playlist.Limit = input.Limit;
         playlist.UpdatedAt = time.GetUtcNow();

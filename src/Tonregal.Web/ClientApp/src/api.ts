@@ -302,6 +302,8 @@ export interface SmartPlaylistInput {
   genre: string | null
   addedWithinDays: number | null
   neverPlayed: boolean
+  /** Mindestens so viele Sterne (1–5), bewertet wird in Navidrome. */
+  minRating: number | null
   sort: SmartPlaylistSort
   limit: number | null
 }
@@ -311,7 +313,7 @@ export interface SmartPlaylist extends SmartPlaylistInput {
   updatedAt: string
   /** .nsp-Datei relativ zur Library. */
   path: string
-  /** Passende Stücke in Tonregal, ohne Hör-Regeln (die kennt nur Navidrome). */
+  /** Passende Stücke in Tonregal, ohne Hör-Regeln und Bewertung (die kennt nur Navidrome). */
   matching: number
   nsp: string
 }
@@ -429,6 +431,15 @@ export const api = {
   duplicates: () => get<DuplicateGroup[]>('/duplicates'),
   scanDuplicates: () => request<ScanStatus>('POST', '/duplicates/scan'),
   resolveDuplicate: (groupId: number, keepFileIds: number[]) => request<void>('POST', `/duplicates/${groupId}/resolve`, { keepFileIds }),
+  /** Sterne je Datei-ID aus Navidrome; unbewertete fehlen. */
+  ratings: (fileIds: number[]) =>
+    fileIds.length
+      ? get<Record<string, number>>(`/player/ratings?${fileIds.map((id) => `files=${id}`).join('&')}`)
+      : Promise.resolve<Record<string, number>>({}),
+  /** 0 nimmt die Bewertung zurück. */
+  rate: (fileId: number, rating: number) => request<void>('PUT', `/player/files/${fileId}/rating`, { rating }),
+  /** Zufällige Warteschlange über einen Interpreten oder die ganze Bibliothek. */
+  shuffle: (artistId?: number) => get<PlaylistItem[]>(artistId === undefined ? '/player/shuffle' : `/player/shuffle?artist=${artistId}`),
   /** Eine Datei in die Inbox; path ist relativ zur Inbox und bestimmt den Album-Ordner. */
   upload: (file: File, path: string) => {
     const form = new FormData()

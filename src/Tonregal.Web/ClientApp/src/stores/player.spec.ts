@@ -52,4 +52,47 @@ describe('player store', () => {
     expect(reloaded.current?.fileId).toBe(2)
     expect(reloaded.playing).toBe(false)
   })
+
+  it('wiederholt die Warteschlange oder ein Stück', () => {
+    const player = usePlayerStore()
+    player.play([item(1), item(2)], 1)
+    player.cycleRepeat()
+    expect(player.repeat).toBe('all')
+    expect(player.hasNext).toBe(true)
+    player.finished()
+    expect(player.current?.fileId).toBe(1)
+    expect(player.playing).toBe(true)
+
+    player.cycleRepeat()
+    expect(player.repeat).toBe('one')
+    const token = player.startToken
+    player.finished()
+    expect(player.current?.fileId).toBe(1)
+    expect(player.startToken).toBe(token + 1)
+    player.next()
+    expect(player.current?.fileId).toBe(2)
+
+    player.cycleRepeat()
+    expect(player.repeat).toBe('off')
+    expect(player.hasNext).toBe(false)
+    player.finished()
+    expect(player.playing).toBe(false)
+  })
+
+  it('mischt nur, was nach dem laufenden Stück kommt', () => {
+    const player = usePlayerStore()
+    const items = Array.from({ length: 20 }, (_, i) => item(i + 1))
+    player.play(items, 4)
+    player.shuffleUpcoming()
+    expect(player.queue.slice(0, 5).map((i) => i.fileId)).toEqual([1, 2, 3, 4, 5])
+    expect(player.queue.map((i) => i.fileId).sort((a, b) => a - b)).toEqual(items.map((i) => i.fileId))
+    expect(player.current?.fileId).toBe(5)
+  })
+
+  it('merkt sich die Wiederholung', async () => {
+    usePlayerStore().cycleRepeat()
+    await Promise.resolve()
+    setActivePinia(createPinia())
+    expect(usePlayerStore().repeat).toBe('all')
+  })
 })

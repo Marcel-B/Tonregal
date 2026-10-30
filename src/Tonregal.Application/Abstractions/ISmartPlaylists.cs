@@ -14,10 +14,11 @@ public sealed record SmartPlaylistInput(
     int? AddedWithinDays,
     bool NeverPlayed,
     SmartPlaylistSort Sort,
-    int? Limit);
+    int? Limit,
+    int? MinRating = null);
 
 /// <param name="Path">Die <c>.nsp</c>-Datei relativ zur Library.</param>
-/// <param name="Matching">Passende Stücke in Tonregals Bibliothek; Hör-Regeln kennt nur Navidrome, sie zählen hier nicht.</param>
+/// <param name="Matching">Passende Stücke in Tonregals Bibliothek; Hör-Regeln und Bewertungen kennt nur Navidrome, sie zählen hier nicht.</param>
 /// <param name="Nsp">Inhalt der Datei, wie Navidrome sie liest.</param>
 public sealed record SmartPlaylistInfo(
     int Id,
@@ -34,7 +35,8 @@ public sealed record SmartPlaylistInfo(
     DateTimeOffset UpdatedAt,
     string Path,
     int Matching,
-    string Nsp);
+    string Nsp,
+    int? MinRating);
 
 public sealed record KeyCount(string Key, int Tracks);
 
@@ -43,7 +45,7 @@ public sealed record PlaylistItem(int FileId, int TrackId, string Title, string 
 
 /// <param name="FromNavidrome">
 /// <c>true</c>: Navidromes Auswertung mit allen Regeln. <c>false</c>: Tonregal hat selbst ausgewertet, weil Navidrome
-/// die Liste noch nicht kennt oder nicht erreichbar ist; „nie gehört“ fehlt dann.
+/// die Liste noch nicht kennt oder nicht erreichbar ist; „nie gehört“ fehlt dann, Bewertungen liest Tonregal aus navidrome.db.
 /// </param>
 public sealed record SmartPlaylistTracks(bool FromNavidrome, IReadOnlyList<PlaylistItem> Items);
 

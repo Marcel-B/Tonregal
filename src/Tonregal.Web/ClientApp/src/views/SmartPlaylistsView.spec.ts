@@ -24,6 +24,7 @@ const neu: SmartPlaylist = {
   genre: null,
   addedWithinDays: 30,
   neverPlayed: false,
+  minRating: null,
   sort: 'Newest',
   limit: null,
   updatedAt: '2026-10-27T00:00:00Z',

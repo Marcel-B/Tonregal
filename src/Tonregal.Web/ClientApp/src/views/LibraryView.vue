@@ -1,15 +1,31 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import ScanButton from '@/components/ScanButton.vue'
+import ShuffleIcon from '@/components/ShuffleIcon.vue'
 import { api, type ArtistSummary } from '@/api'
+import { usePlayerStore } from '@/stores/player'
 
 const artists = ref<ArtistSummary[]>([])
 const filter = ref('')
 const error = ref<string | null>(null)
 const loaded = ref(false)
+const player = usePlayerStore()
+const shuffling = ref(false)
+
+async function shuffleAll() {
+  shuffling.value = true
+  try {
+    player.play(await api.shuffle())
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    shuffling.value = false
+  }
+}
 
 async function load() {
   try {
@@ -45,6 +61,17 @@ const groups = computed(() => {
   <div class="flex flex-wrap items-center gap-3 mb-6">
     <h1 class="text-2xl font-semibold mr-auto">Bibliothek</h1>
     <InputText v-model="filter" placeholder="Künstler suchen" size="small" />
+    <Button
+      label="Alles zufällig"
+      size="small"
+      severity="secondary"
+      :loading="shuffling"
+      :disabled="!artists.length"
+      data-testid="shuffle-library"
+      @click="shuffleAll"
+    >
+      <template #icon="{ class: iconClass }"><ShuffleIcon :class="iconClass" /></template>
+    </Button>
     <ScanButton @finished="load" />
   </div>
 

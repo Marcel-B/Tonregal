@@ -16,6 +16,15 @@ public interface INavidromeClient
     Task<bool> ScrobbleAsync(string songId, bool submission, CancellationToken ct);
 
     /// <summary>
+    /// Bewertungen (1 bis 5 Sterne) des eingestellten Navidrome-Benutzers je Datei (Pfad relativ zur Library); unbewertete
+    /// und Navidrome unbekannte Dateien fehlen. Leer, wenn Navidrome nicht eingerichtet oder navidrome.db nicht lesbar ist.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, int>> RatingsAsync(IReadOnlyCollection<string> libraryPaths, CancellationToken ct);
+
+    /// <summary>Setzt die Bewertung (0 = keine, 1 bis 5 Sterne); <c>false</c>, wenn Navidrome sie nicht annimmt.</summary>
+    Task<bool> SetRatingAsync(string songId, int rating, CancellationToken ct);
+
+    /// <summary>
     /// Löscht die aus einer Datei eingelesene Playlist (Pfad relativ zur Library); Navidrome selbst behält sie sonst,
     /// auch wenn die Datei weg ist. <c>false</c>, wenn Navidrome sie nicht kennt oder nicht erreichbar ist.
     /// </summary>

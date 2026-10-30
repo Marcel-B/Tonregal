@@ -48,6 +48,33 @@ public struct TonregalClient: Sendable {
         try check(data, response)
     }
 
+    /// Sterne je Datei-ID aus Navidrome; unbewertete fehlen.
+    public func ratings(files ids: [Int]) async throws -> [Int: Int] {
+        guard !ids.isEmpty else { return [:] }
+        let answer: [String: Int] = try await get("api/player/ratings?" + ids.map { "files=\($0)" }.joined(separator: "&"))
+        return Dictionary(uniqueKeysWithValues: answer.compactMap { key, value in Int(key).map { ($0, value) } })
+    }
+
+    /// 0 nimmt die Bewertung zurück. Navidrome muss die Datei schon kennen (Scan alle 15 Minuten).
+    public func rate(file id: Int, rating: Int) async throws {
+        var request = URLRequest(url: url("api/player/files/\(id)/rating"))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["rating": rating])
+        let data: Data, response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw TonregalError(Self.describe(error))
+        }
+        try check(data, response)
+    }
+
+    /// Zufällige Warteschlange: alle Stücke eines Interpreten (auch Gastauftritte) oder ohne `artist` die ganze Bibliothek.
+    public func shuffle(artist: Int? = nil) async throws -> [QueueItem] {
+        try await get(artist.map { "api/player/shuffle?artist=\($0)" } ?? "api/player/shuffle")
+    }
+
     private func url(_ path: String) -> URL {
         URL(string: path, relativeTo: server)!.absoluteURL
     }
