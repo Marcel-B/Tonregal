@@ -58,6 +58,21 @@ describe('AlbumView', () => {
     expect(wrapper.find('[data-testid="fetch-cover"]').exists()).toBe(false)
   })
 
+  it('verlinkt Album und Titel zum Herunterladen', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(album))))
+
+    const wrapper = mount(AlbumView, { props: { id: 7 }, global: { plugins: [PrimeVue], stubs: { RouterLink: RouterLinkStub } } })
+    await flushPromises()
+
+    const albumLink = wrapper.find('a[data-testid="download-album"]')
+    expect(albumLink.attributes('href')).toBe('/api/library/albums/7/download')
+    expect(albumLink.attributes()).toHaveProperty('download')
+    expect(wrapper.findAll('a[data-testid="download-track"]').map((a) => a.attributes('href'))).toEqual([
+      '/api/library/files/1/download',
+      '/api/library/files/2/download',
+    ])
+  })
+
   it('bringt alle Tracks auf ein Release', async () => {
     const fetch = vi.fn(async (_url: string, init?: RequestInit) =>
       init?.method === 'POST'

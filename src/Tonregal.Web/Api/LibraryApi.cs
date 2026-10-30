@@ -185,6 +185,52 @@ public static class LibraryApi
             return TypedResults.PhysicalFile(file, AudioContentType(file), enableRangeProcessing: true);
         });
 
+        // Die Originaldatei als Download, unter ihrem Namen in der Library.
+        library.MapGet("/files/{id:int}/download", async Task<IResult> (int id, TonregalDbContext db, IOptions<TonregalOptions> options, CancellationToken ct) =>
+        {
+            var path = await db.AudioFiles.Where(f => f.Id == id).Select(f => f.Path).SingleOrDefaultAsync(ct);
+            if (ResolveInside(Path.GetFullPath(options.Value.Library), path) is not { } file || !File.Exists(file))
+                return TypedResults.NotFound();
+            return TypedResults.PhysicalFile(file, AudioContentType(file), Path.GetFileName(file), enableRangeProcessing: true);
+        });
+
+        // Ein Album als ZIP: je Track die beste Datei (wie in der Albumansicht zuerst gelistet) und das Cover.
+        library.MapGet("/albums/{id:int}/download", async Task<IResult> (int id, TonregalDbContext db, IOptions<TonregalOptions> options, CancellationToken ct) =>
+        {
+            var album = await db.Albums
+                .Where(a => a.Id == id)
+                .Select(a => new
+                {
+                    a.Title,
+                    a.Year,
+                    Artist = a.AlbumArtist.Name,
+                    a.CoverPath,
+                    Files = a.Tracks
+                        .OrderBy(t => t.Disc).ThenBy(t => t.Number)
+                        .Select(t => t.Files
+                            .OrderByDescending(f => f.Format == AudioFormat.Flac).ThenByDescending(f => f.Bitrate)
+                            .Select(f => f.Path).FirstOrDefault())
+                        .ToList(),
+                })
+                .SingleOrDefaultAsync(ct);
+            if (album is null)
+                return TypedResults.NotFound();
+
+            var root = Path.GetFullPath(options.Value.Library);
+            var files = album.Files
+                .Select(f => ResolveInside(root, f))
+                .Append(ResolveInside(root, album.CoverPath))
+                .OfType<string>()
+                .Where(File.Exists)
+                .Distinct()
+                .ToList();
+            if (!files.Any(f => f != ResolveInside(root, album.CoverPath)))
+                return TypedResults.Problem("Die Dateien des Albums sind nicht erreichbar", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            var name = album.Year is { } year ? $"{album.Artist} - {album.Title} ({year})" : $"{album.Artist} - {album.Title}";
+            return new AlbumZipResult(SafeFileName(name), files);
+        });
+
         library.MapGet("/scan", (LibraryScanService scans) => scans.Status);
 
         library.MapPost("/scan", (LibraryScanService scans) =>
@@ -205,6 +251,14 @@ public static class LibraryApi
         ".wav" => "audio/wav",
         _ => "application/octet-stream",
     };
+
+    /// <summary>Ersetzt Zeichen, die in Dateinamen auf macOS, Windows oder iOS stören.</summary>
+    public static string SafeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars().Concat(['/', '\\', ':', '*', '?', '"', '<', '>', '|']).ToHashSet();
+        var safe = new string(name.Select(c => invalid.Contains(c) || char.IsControl(c) ? '_' : c).ToArray()).Trim().TrimEnd('.');
+        return safe.Length == 0 ? "Album" : safe;
+    }
 
     /// <summary>Löst einen Library-relativen Pfad auf und verhindert, dass er aus der Library herausführt.</summary>
     internal static string? ResolveInside(string root, string? relative)
