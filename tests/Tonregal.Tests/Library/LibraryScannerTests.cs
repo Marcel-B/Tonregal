@@ -134,6 +134,32 @@ public sealed class LibraryScannerTests : IDisposable
     }
 
     [Fact]
+    public async Task Mehrere_Jobs_fuer_denselben_Pfad_verknuepfen_den_juengsten()
+    {
+        // Der ältere Job verlor seine Datei (Dublette verworfen, AudioFileId zurückgesetzt), der neuere
+        // wurde danach auf denselben, frei gewordenen Pfad übernommen.
+        await ScanAsync();
+        const string path = "Testband/2024 - Testalbum/04 - Neu.mp3";
+        _library.Copy("song1.mp3", _library.AlbumFolder, "04 - Neu.mp3");
+        await using (var setup = CreateContext())
+        {
+            setup.ImportJobs.Add(new ImportJob { SourcePath = "alt/Neu.mp3", State = ImportState.Imported, LibraryPath = path });
+            setup.ImportJobs.Add(new ImportJob { SourcePath = "neu/Neu.mp3", State = ImportState.Imported, LibraryPath = path, Source = FileSource.Api });
+            await setup.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        var result = await ScanAsync();
+
+        Assert.Equal(1, result.Added);
+        await using var db = CreateContext();
+        var file = await db.AudioFiles.SingleAsync(f => f.Path == path, TestContext.Current.CancellationToken);
+        Assert.Equal(FileSource.Api, file.Source);
+        var jobs = await db.ImportJobs.OrderBy(j => j.Id).ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Null(jobs[0].AudioFileId);
+        Assert.Equal(file.Id, jobs[1].AudioFileId);
+    }
+
+    [Fact]
     public async Task Ohne_Mount_Marker_kein_Scan()
     {
         File.Delete(Path.Combine(_library.MusicRoot, ".tonregal-mount"));
