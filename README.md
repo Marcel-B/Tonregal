@@ -171,7 +171,10 @@ Prüflisten von Inbox und Altbestand lassen sich per Tastatur abarbeiten: `j`/`k
 (MusicBrainz-Recording-ID oder AcoustID) oder gleichem Interpret, Titel und Dauer (±2 s). MP3 und FLAC
 desselben Tracks gelten nicht als Dublette. Auf der Seite *Dubletten* hört man jede Datei 10 Sekunden an
 und wählt, was bleibt; der Vorschlag ist verlustfrei vor verlustbehaftet, dann die höhere Bitrate. Der
-Rest wandert nach `Library/.trash/{Datum}/` und wird nach 30 Tagen gelöscht. Eine Inbox-Datei, die
+Rest wandert nach `Library/.trash/{Datum}/` und wird nach 30 Tagen gelöscht. *Alle Vorschläge übernehmen*
+entscheidet nach einer Bestätigung mit Anzahl alle Gruppen auf einmal nach dem Vorschlag; Gruppen, deren
+Auswahl man auf der Seite geändert hat, bleiben draußen, „Wahrscheinlich gleich“ nur auf ausdrücklichen
+Wunsch. Der Server entscheidet jede Gruppe einzeln wie beim einzelnen Knopf. Eine Inbox-Datei, die
 byte-gleich schon in der Library liegt, geht direkt in den Papierkorb; ist nur der Zielplatz belegt,
 landet sie als `… (2)` daneben und erscheint als Dublette.
 
