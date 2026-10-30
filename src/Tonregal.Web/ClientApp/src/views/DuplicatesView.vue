@@ -3,10 +3,11 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
+import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import { useStatusStore } from '@/stores/status'
-import { api, formatDuration, type DuplicateFile, type DuplicateGroup, type DuplicateKind } from '@/api'
+import { api, formatDuration, type DuplicateFile, type DuplicateGroup, type DuplicateKind, type ResolveSuggestedResult } from '@/api'
 
 const status = useStatusStore()
 const groups = ref<DuplicateGroup[]>([])
@@ -70,6 +71,46 @@ async function resolve(group: DuplicateGroup, ids: number[]) {
 }
 const trashCount = (group: DuplicateGroup) => group.files.length - (keep[group.id]?.length ?? 0)
 
+// Alle Vorschläge auf einmal. Gruppen, deren Auswahl auf der Seite geändert wurde, bleiben draußen:
+// Dort zählt die eigene Entscheidung, nicht der Vorschlag. „Wahrscheinlich gleich“ sollte man vorher
+// anhören, deshalb nur auf ausdrücklichen Wunsch.
+const followsSuggestion = (g: DuplicateGroup) =>
+  g.suggestedFileId != null && keep[g.id]?.length === 1 && keep[g.id]![0] === g.suggestedFileId
+const changedGroups = computed(() => groups.value.filter((g) => g.suggestedFileId != null && !followsSuggestion(g)).length)
+const metadataGroups = computed(() => groups.value.filter((g) => g.kind === 'Metadata' && followsSuggestion(g)).length)
+const includeMetadata = ref(false)
+const bulkGroups = computed(() =>
+  groups.value.filter((g) => followsSuggestion(g) && (includeMetadata.value || g.kind !== 'Metadata')),
+)
+const bulkTrash = computed(() => bulkGroups.value.reduce((n, g) => n + g.files.length - 1, 0))
+const bulkVisible = ref(false)
+const bulkBusy = ref(false)
+const bulkResult = ref<ResolveSuggestedResult | null>(null)
+const bulkError = ref<string | null>(null)
+
+function openBulk() {
+  stop()
+  includeMetadata.value = false
+  bulkResult.value = null
+  bulkError.value = null
+  bulkVisible.value = true
+}
+async function resolveAll() {
+  const ids = bulkGroups.value.map((g) => g.id)
+  if (!ids.length) return
+  bulkBusy.value = true
+  bulkError.value = null
+  try {
+    bulkResult.value = await api.resolveSuggested(ids)
+    for (const id of ids) delete keep[id]
+    await load()
+  } catch (e) {
+    bulkError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
 // Vorhören: 10 Sekunden ab etwa einem Drittel, nicht vom stillen Anfang.
 const audio = new Audio()
 const playing = ref<number | null>(null)
@@ -98,8 +139,61 @@ onUnmounted(stop)
   <div class="flex flex-wrap items-center gap-3 mb-6">
     <h1 class="text-2xl font-semibold mr-auto">Dubletten</h1>
     <span v-if="groups.length" class="text-sm text-surface-500">{{ groups.length }} offen</span>
+    <Button
+      v-if="groups.some((g) => g.suggestedFileId != null)"
+      label="Alle Vorschläge übernehmen"
+      icon="pi pi-check-square"
+      size="small"
+      :disabled="busy !== null"
+      data-testid="resolve-all"
+      @click="openBulk"
+    />
     <Button label="Neu suchen" icon="pi pi-refresh" severity="secondary" size="small" :loading="scanning" @click="scan" />
   </div>
+
+  <Dialog v-model:visible="bulkVisible" modal header="Alle Vorschläge übernehmen" class="w-full max-w-xl" :dismissable-mask="!bulkBusy">
+    <Message v-if="bulkError" severity="error" class="mb-4">{{ bulkError }}</Message>
+    <template v-if="bulkResult">
+      <Message severity="success" class="mb-4" data-testid="resolve-all-result">
+        {{ bulkResult.resolved }} Gruppe(n) entschieden, {{ bulkResult.trashed }} Datei(en) liegen jetzt in <code>Library/.trash</code>.
+      </Message>
+      <details v-if="bulkResult.skipped.length" class="text-sm">
+        <summary class="cursor-pointer text-surface-500">{{ bulkResult.skipped.length }} Gruppe(n) übersprungen</summary>
+        <ul class="mt-2">
+          <li v-for="s in bulkResult.skipped" :key="s.groupId" class="py-0.5">Gruppe {{ s.groupId }} · {{ s.reason }}</li>
+        </ul>
+      </details>
+    </template>
+    <template v-else>
+      <p class="mb-3" data-testid="resolve-all-summary">
+        In <strong>{{ bulkGroups.length }} Gruppe(n)</strong> bleibt jeweils die vorgeschlagene Datei,
+        <strong>{{ bulkTrash }} Datei(en)</strong> wandern in den Papierkorb (<code>Library/.trash</code>, 30 Tage).
+      </p>
+      <label v-if="metadataGroups" class="flex items-start gap-2 mb-3 text-sm cursor-pointer">
+        <Checkbox v-model="includeMetadata" binary input-id="include-metadata" data-testid="include-metadata" />
+        <span>
+          Auch {{ metadataGroups }} Gruppe(n) „Wahrscheinlich gleich“ übernehmen. Die sind nur über Interpret, Titel und Dauer
+          gefunden; besser vorher anhören.
+        </span>
+      </label>
+      <p v-if="changedGroups" class="text-sm text-surface-500 mb-3">
+        {{ changedGroups }} Gruppe(n) mit geänderter Auswahl bleiben unberührt; die entscheidest du einzeln.
+      </p>
+      <p class="text-sm text-surface-500">Der Server prüft jede Gruppe vor dem Verschieben noch einmal.</p>
+    </template>
+    <template #footer>
+      <Button :label="bulkResult ? 'Schließen' : 'Abbrechen'" severity="secondary" text :disabled="bulkBusy" @click="bulkVisible = false" />
+      <Button
+        v-if="!bulkResult"
+        :label="`${bulkGroups.length} übernehmen`"
+        icon="pi pi-trash"
+        :disabled="!bulkGroups.length"
+        :loading="bulkBusy"
+        data-testid="resolve-all-confirm"
+        @click="resolveAll"
+      />
+    </template>
+  </Dialog>
   <Message v-if="error" severity="error" class="mb-4">{{ error }}</Message>
   <Message v-if="actionError" severity="error" class="mb-4">{{ actionError }}</Message>
   <Message v-if="loaded && !groups.length && !error" severity="success">

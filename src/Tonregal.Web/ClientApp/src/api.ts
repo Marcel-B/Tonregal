@@ -279,6 +279,12 @@ export interface DuplicateGroup {
   files: DuplicateFile[]
 }
 
+export interface ResolveSuggestedResult {
+  resolved: number
+  trashed: number
+  skipped: { groupId: number; reason: string }[]
+}
+
 export interface AnalysisCounts {
   files: number
   analyzed: number
@@ -467,6 +473,7 @@ export const api = {
   duplicates: () => get<DuplicateGroup[]>('/duplicates'),
   scanDuplicates: () => request<ScanStatus>('POST', '/duplicates/scan'),
   resolveDuplicate: (groupId: number, keepFileIds: number[]) => request<void>('POST', `/duplicates/${groupId}/resolve`, { keepFileIds }),
+  resolveSuggested: (groupIds: number[]) => request<ResolveSuggestedResult>('POST', '/duplicates/resolve-suggested', { groupIds }),
   /** Sterne je Datei-ID aus Navidrome; unbewertete fehlen. */
   ratings: (fileIds: number[]) =>
     fileIds.length

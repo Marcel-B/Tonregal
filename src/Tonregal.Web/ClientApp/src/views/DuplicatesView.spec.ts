@@ -62,4 +62,47 @@ describe('DuplicatesView', () => {
     const post = fetch.mock.calls.find((c) => c[1]?.method === 'POST')!
     expect(JSON.parse(post[1]!.body as string)).toEqual({ keepFileIds: [1, 2] })
   })
+
+  it('übernimmt alle Vorschläge nach Bestätigung, „Wahrscheinlich gleich“ nur auf Wunsch', async () => {
+    const all: DuplicateGroup[] = [
+      ...groups,
+      { id: 2, kind: 'ExactHash', suggestedFileId: 3, createdAt: '2026-10-25T20:00:00Z', files: [file(3), file(4), file(5)] },
+      { id: 3, kind: 'Metadata', suggestedFileId: 6, createdAt: '2026-10-25T20:00:00Z', files: [file(6), file(7)] },
+      { id: 4, kind: 'ExactHash', suggestedFileId: 8, createdAt: '2026-10-25T20:00:00Z', files: [file(8), file(9)] },
+    ]
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === 'POST'
+        ? new Response(JSON.stringify({ resolved: 2, trashed: 3, skipped: [] }))
+        : new Response(JSON.stringify(fetch.mock.calls.length > 1 ? [] : all)),
+    )
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('Audio', class { pause() {} })
+
+    const wrapper = mountView()
+    await flushPromises()
+    // Gruppe 4 eigens entschieden: bleibt beim Übernehmen draußen.
+    await wrapper.find('#keep-9').setValue(true)
+    await wrapper.find('[data-testid="resolve-all"]').trigger('click')
+    await flushPromises()
+
+    const summary = () => document.querySelector('[data-testid="resolve-all-summary"]')!.textContent!
+    expect(summary()).toContain('2 Gruppe(n)')
+    expect(summary()).toContain('3 Datei(en)')
+    expect(document.body.textContent).toContain('1 Gruppe(n) mit geänderter Auswahl')
+    expect(fetch.mock.calls.some((c) => c[1]?.method === 'POST')).toBe(false)
+
+    ;(document.querySelector('[data-testid="include-metadata"] input') as HTMLInputElement).click()
+    await flushPromises()
+    expect(summary()).toContain('3 Gruppe(n)')
+    expect(summary()).toContain('4 Datei(en)')
+
+    ;(document.querySelector('[data-testid="resolve-all-confirm"]') as HTMLButtonElement).click()
+    await flushPromises()
+
+    const post = fetch.mock.calls.find((c) => c[1]?.method === 'POST')!
+    expect(post[0]).toBe('/api/duplicates/resolve-suggested')
+    expect(JSON.parse(post[1]!.body as string)).toEqual({ groupIds: [1, 2, 3] })
+    expect(document.querySelector('[data-testid="resolve-all-result"]')!.textContent).toContain('2 Gruppe(n) entschieden')
+    wrapper.unmount()
+  })
 })
