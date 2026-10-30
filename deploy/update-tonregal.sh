@@ -20,9 +20,12 @@ repo="$(cd "$DEPLOY_DIR/.." && pwd)"
 cd "$repo"
 
 LABEL=de.bvelop.tonregal-update
-# Zustand und Log auf der T7; nur was launchd selbst öffnet (StandardOutPath) liegt intern.
-STATE="$MUSIC_ROOT/update"
-LOG="$MUSIC_ROOT/logs/update.log"
+# Zustand und Log intern (zusammen wenige KB): Fehlt dem Agent der Zugriff auf die T7, muss er das
+# trotzdem festhalten und melden können. Früher lagen beide auf der T7; dann las der Agent ohne
+# Zugriff keinen ausgerollten Commit, nahm HEAD und hielt einen gescheiterten Deploy für erledigt.
+STATE="$UPDATE_STATE"
+OLD_STATE="$MUSIC_ROOT/update"
+LOG="$SERVICE_LOGS/update.log"
 AGENT_LOG="$SERVICE_LOGS/update.stdout.log"
 DB_BACKUPS="$MUSIC_ROOT/backups/deploy"
 DB_BACKUP_KEEP=10
@@ -30,7 +33,6 @@ DB_BACKUP_KEEP=10
 log() {
   local line
   line="$(date '+%Y-%m-%d %H:%M:%S') $*"
-  # Ohne Zugriff auf die T7 (fehlende Freigabe) landet die Zeile wenigstens im internen Agent-Log.
   printf '%s\n' "$line" >> "$LOG" 2>/dev/null || printf '%s\n' "$line" >&2
 }
 
@@ -48,15 +50,30 @@ backup_db() {
   ls -1 "$DB_BACKUPS"/tonregal-20*.db 2>/dev/null | sort -r | tail -n +$((DB_BACKUP_KEEP + 1)) | while read -r old; do rm -f "$old"; done
 }
 
+# Einmalig den Zustand von der T7 übernehmen (Versionen vor dem internen Zustand).
+migrate_state() {
+  [[ -f "$STATE/deployed" ]] && return 0
+  mkdir -p "$STATE"
+  cp "$OLD_STATE/deployed" "$STATE/deployed" 2>/dev/null || true
+}
+
 round() {
   if [[ ! -d "$MUSIC_ROOT" ]]; then
     echo "$MUSIC_ROOT nicht gemountet; nichts getan." >&2
     return 0
   fi
-  mkdir -p "$STATE" "$(dirname "$LOG")" 2>/dev/null || {
-    echo "Kein Schreibzugriff auf $MUSIC_ROOT. /bin/bash braucht Festplattenvollzugriff (siehe README)." >&2
+  # Ein bestehender Ordner sagt nichts über die Freigabe (mkdir -p schreibt dann nicht); touch schon.
+  if ! touch "$MUSIC_ROOT/.tonregal-mount" 2>/dev/null; then
+    if [[ ! -f "$STATE/no-access" ]]; then
+      log "Kein Zugriff auf $MUSIC_ROOT: /bin/bash fehlt der Festplattenvollzugriff (Systemeinstellungen → Datenschutz & Sicherheit). Nichts ausgerollt."
+      touch "$STATE/no-access"
+    fi
     return 1
-  }
+  fi
+  if [[ -f "$STATE/no-access" ]]; then
+    log "Zugriff auf $MUSIC_ROOT ist wieder da."
+    rm -f "$STATE/no-access"
+  fi
   export GIT_TERMINAL_PROMPT=0
 
   local branch
@@ -72,11 +89,12 @@ round() {
   rm -f "$STATE/off-main"
 
   git fetch -q origin main || { log "git fetch fehlgeschlagen."; return 1; }
-  # Der zuletzt ausgerollte Commit, nicht HEAD: Nach einem gescheiterten Deploy ist der Checkout schon weiter.
+  # Der zuletzt ausgerollte Commit, nie HEAD: Nach einem gescheiterten Deploy ist der Checkout schon
+  # weiter. Ohne Eintrag (vor dem ersten Deploy) wird ausgerollt.
   local deployed remote
-  deployed="$(cat "$STATE/deployed" 2>/dev/null || git rev-parse HEAD)"
+  deployed="$(cat "$STATE/deployed" 2>/dev/null || true)"
   remote="$(git rev-parse origin/main)"
-  if [[ "$deployed" == "$remote" ]] || git merge-base --is-ancestor "$remote" "$deployed" 2>/dev/null; then
+  if [[ -n "$deployed" ]] && { [[ "$deployed" == "$remote" ]] || git merge-base --is-ancestor "$remote" "$deployed" 2>/dev/null; }; then
     rm -f "$STATE/waiting"
     return 0
   fi
@@ -95,8 +113,8 @@ round() {
   fi
   rm -f "$STATE/waiting"
 
-  log "Rolle $(short "$deployed") -> $(short "$remote") aus:"
-  git log --format='    %h %s' "$deployed..$remote" >> "$LOG" 2>/dev/null || true
+  log "Rolle $(short "${deployed:-?}") -> $(short "$remote") aus:"
+  [[ -n "$deployed" ]] && { git log --format='    %h %s' "$deployed..$remote" >> "$LOG" 2>/dev/null || true; }
   backup_db || log "Sicherung der Datenbank fehlgeschlagen; rolle trotzdem aus."
   if git merge -q --ff-only origin/main && "$DEPLOY_DIR/deploy-tonregal.sh" >> "$LOG" 2>&1; then
     rm -f "$STATE/failed"
@@ -118,7 +136,8 @@ case "${1:-run}" in
     # Gegen eine Runde von Hand, während die des Agents ausrollt. Liegt intern, damit auch
     # eine fehlende T7 die Runde nicht hängen lässt.
     lock="$SERVICE_LOGS/update.lock"
-    mkdir -p "$SERVICE_LOGS"
+    mkdir -p "$SERVICE_LOGS" "$STATE"
+    migrate_state
     mkdir "$lock" 2>/dev/null || { echo "Eine andere Runde läuft gerade."; exit 0; }
     trap 'rmdir "$lock"' EXIT
     round
@@ -169,14 +188,11 @@ EOF
       launchctl print "$domain/$LABEL" >/dev/null 2>&1 || break
       sleep 0.5
     done
+    # Vor dem Start, denn RunAtLoad rollt sofort aus; aus dem Terminal ist die T7 sicher lesbar.
+    migrate_state
     launchctl bootstrap "$domain" "$plist"
-    # Ohne Eintrag gilt der aktuelle Stand als ausgerollt, sonst würde die erste Runde nichts tun
-    # oder alles seit irgendeinem Commit erneut ausrollen.
-    if [[ -d "$MUSIC_ROOT" ]] && [[ ! -f "$STATE/deployed" ]]; then
-      mkdir -p "$STATE" && git rev-parse HEAD > "$STATE/deployed"
-    fi
     echo "Automatische Deploys an: main wird alle $minutes Minute(n) geprüft und ausgerollt, sobald Tonregal frei ist."
-    echo "Log: $LOG"
+    echo "Log: $LOG (status zeigt, ob der Agent die T7 erreicht)"
     echo "Einmalig nötig: /bin/bash unter Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff"
     echo "hinzufügen (Cmd+Shift+G, /bin/bash), sonst darf der Agent nicht auf $MUSIC_ROOT schreiben."
     ;;
@@ -195,6 +211,7 @@ EOF
     echo "Ausgerollt: $(cut -c1-7 "$STATE/deployed" 2>/dev/null || echo unbekannt)"
     if [[ -f "$STATE/waiting" ]]; then echo "Wartet: $(cut -c1-7 "$STATE/waiting")"; fi
     if [[ -f "$STATE/failed" ]]; then echo "Fehlgeschlagen: $(cut -c1-7 "$STATE/failed")"; fi
+    if [[ -f "$STATE/no-access" ]]; then echo "Kein Zugriff auf $MUSIC_ROOT: /bin/bash braucht Festplattenvollzugriff."; fi
     if [[ -s "$AGENT_LOG" ]]; then echo "--- $AGENT_LOG"; tail -n 5 "$AGENT_LOG"; fi
     if [[ -f "$LOG" ]]; then echo "--- $LOG"; tail -n 15 "$LOG"; fi
     ;;
