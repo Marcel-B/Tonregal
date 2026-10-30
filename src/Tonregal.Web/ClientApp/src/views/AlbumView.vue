@@ -125,6 +125,18 @@ function openMatch(track: TrackDto) {
           >
             <template #icon="{ class: iconClass }"><ShuffleIcon :class="iconClass" /></template>
           </Button>
+          <Button
+            v-if="album.tracks.length"
+            as="a"
+            :href="api.albumDownloadUrl(album.id)"
+            download
+            label="Herunterladen"
+            icon="pi pi-download"
+            size="small"
+            severity="secondary"
+            title="Album als ZIP mit den Originaldateien und dem Cover"
+            data-testid="download-album"
+          />
         </div>
         <div v-if="album.canFetchCover" class="mt-3 flex items-center gap-3">
           <Button label="Cover suchen" icon="pi pi-image" severity="secondary" size="small" :loading="fetchingCover" data-testid="fetch-cover" @click="fetchCover" />
@@ -191,7 +203,7 @@ function openMatch(track: TrackDto) {
           </div>
         </template>
       </Column>
-      <Column class="w-32">
+      <Column class="w-40">
         <template #body="{ data }">
           <Button
             icon="pi pi-play"
@@ -214,6 +226,19 @@ function openMatch(track: TrackDto) {
             :disabled="!data.files.length"
             data-testid="play-next"
             @click="player.playNext(trackItems(data))"
+          />
+          <Button
+            v-if="data.files.length"
+            as="a"
+            :href="api.downloadUrl(data.files[0].id)"
+            download
+            icon="pi pi-download"
+            text
+            rounded
+            size="small"
+            aria-label="Herunterladen"
+            :title="`Originaldatei herunterladen (${data.files[0].format.toUpperCase()})`"
+            data-testid="download-track"
           />
           <Button icon="pi pi-search" text rounded size="small" aria-label="Abgleichen" title="Bei AcoustID/MusicBrainz abgleichen" @click="openMatch(data)" />
         </template>
