@@ -50,7 +50,8 @@ Einmalig:
    `APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (derselbe API-Key geht). Am einfachsten mit
    `apple/set-testflight-secrets.sh`: fragt die Werte im Terminal ab (die `.p8` als Pfad) und setzt sie mit `gh`.
 
-Dann *Actions → TestFlight → Run workflow*. Der Workflow archiviert, signiert und lädt hoch (Build-Nummer 1000 plus die
+Jeder Merge auf main, der etwas unter `apple/` ändert, lädt danach von selbst einen neuen Build hoch; von Hand geht es über
+*Actions → TestFlight → Run workflow*. Der Workflow archiviert, signiert und lädt hoch (Build-Nummer 1000 plus die
 Laufnummer). Nach der Verarbeitung in App Store Connect unter *TestFlight* sich selbst als internen Tester eintragen und
 die App über die TestFlight-App installieren. Interne Builds brauchen keine Prüfung und laufen 90 Tage.
 
