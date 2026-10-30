@@ -218,4 +218,34 @@ describe('InboxView', () => {
     expect(fetch.mock.calls.map(([url]) => url)).toContain('/api/inbox?source=Legacy')
     expect(fetch).toHaveBeenCalledWith('/api/inbox/legacy/scan', expect.objectContaining({ method: 'POST' }))
   })
+  it('lädt nach dem eigenen Laden nicht im Kreis neu', async () => {
+    const fetch = vi.fn(async (_url: string) => new Response(JSON.stringify(response)))
+    vi.stubGlobal('fetch', fetch)
+
+    mountView()
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    await flushPromises()
+
+    expect(fetch.mock.calls.filter(([url]) => url === '/api/inbox?source=Inbox')).toHaveLength(1)
+  })
+
+  it('zeigt lange Listen seitenweise und blättert mit der Tastatur weiter', async () => {
+    localStorage.clear()
+    // Der Paginator fragt nach der Bildschirmbreite, jsdom kennt matchMedia nicht.
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
+    const many = Array.from({ length: 120 }, (_, i) => job(i + 1, `Altbestand/${String(i + 1).padStart(3, '0')}.mp3`, 'NeedsReview'))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...response, jobs: many }))))
+
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid="job-state"]')).toHaveLength(50)
+    expect(wrapper.text()).toContain('1–50 von 120')
+
+    for (let i = 0; i < 51; i++) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j' }))
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('51–100 von 120')
+    expect(wrapper.find('.focused-row').text()).toContain('051.mp3')
+  })
 })
