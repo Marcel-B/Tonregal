@@ -75,7 +75,7 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi().MapIngestApi().MapSettingsApi().MapSmartPlaylistsApi();
+app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi().MapIngestApi().MapSettingsApi().MapSmartPlaylistsApi().MapListeningApi();
 app.MapHub<StatusHub>("/hub");
 app.MapFallbackToFile("index.html");
 

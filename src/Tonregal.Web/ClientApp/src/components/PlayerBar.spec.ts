@@ -64,7 +64,40 @@ describe('PlayerBar', () => {
     await audio.trigger('timeupdate')
     await audio.trigger('timeupdate')
 
-    expect(fetch.mock.calls.map((c) => c[0])).toEqual(['/api/player/files/7/scrobble?submission=false', '/api/player/files/7/scrobble?submission=true'])
+    expect(fetch.mock.calls.map((c) => c[0]).filter((url) => url.includes('/scrobble'))).toEqual([
+      '/api/player/files/7/scrobble?submission=false',
+      '/api/player/files/7/scrobble?submission=true',
+    ])
+  })
+
+  it('zeigt die Bewertung aus Navidrome und bewertet', async () => {
+    fetch.mockImplementation(async (url: string) =>
+      url.startsWith('/api/player/ratings') ? Response.json({ '7': 3 }) : new Response(null, { status: 204 }),
+    )
+    const wrapper = mountBar()
+    usePlayerStore().play([item(7)])
+    await vi.waitFor(() => expect(wrapper.findAll('[data-testid="player-rating"] .p-rating-option-active')).toHaveLength(3))
+
+    await wrapper.findAll('[data-testid="player-rating"] .p-rating-option')[4]!.trigger('click')
+
+    const put = fetch.mock.calls.find((c) => c[1]?.method === 'PUT')!
+    expect(put[0]).toBe('/api/player/files/7/rating')
+    expect(JSON.parse(put[1].body)).toEqual({ rating: 5 })
+  })
+
+  it('wiederholt ein Stück, wenn es zu Ende ist', async () => {
+    const wrapper = mountBar()
+    const player = usePlayerStore()
+    player.play([item(1), item(2)])
+    await wrapper.vm.$nextTick()
+    const repeat = wrapper.get('[data-testid="player-repeat"]')
+    await repeat.trigger('click')
+    await repeat.trigger('click')
+    expect(repeat.attributes('aria-label')).toBe('Wiederholen: dieses Stück')
+
+    await wrapper.get('audio').trigger('ended')
+    expect((wrapper.get('audio').element as HTMLAudioElement).src).toMatch(/\/api\/player\/files\/1\/stream$/)
+    expect(play).toHaveBeenCalledTimes(2)
   })
 
   it('pausiert per Knopf, ignoriert aber das pause beim Quellwechsel', async () => {

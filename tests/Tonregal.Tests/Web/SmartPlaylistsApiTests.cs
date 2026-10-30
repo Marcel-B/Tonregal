@@ -58,8 +58,8 @@ public sealed class SmartPlaylistsApiTests : IDisposable
     private static JsonNode Nsp(string path) => JsonNode.Parse(File.ReadAllText(path))!;
 
     private static object Input(string name, double? bpmMin = null, double? bpmMax = null, string[]? keys = null, string? genre = null,
-        int? addedWithinDays = null, bool neverPlayed = false, string sort = "Random", int? limit = null) =>
-        new { name, bpmMin, bpmMax, keys, genre, addedWithinDays, neverPlayed, sort, limit };
+        int? addedWithinDays = null, bool neverPlayed = false, string sort = "Random", int? limit = null, int? minRating = null) =>
+        new { name, bpmMin, bpmMax, keys, genre, addedWithinDays, neverPlayed, sort, limit, minRating };
 
     /// <summary>Wartet auf den ersten Scan und gibt den Stücken BPM, Tonart und Genre.</summary>
     private async Task AnalyzedAsync()
@@ -219,6 +219,38 @@ public sealed class SmartPlaylistsApiTests : IDisposable
         Assert.True(tracks!.FromNavidrome);
         Assert.Equal([files[1].Id, files[3].Id], tracks.Items.Select(i => i.FileId));
         Assert.Equal("/rest/getPlaylist", Assert.Single(_navidrome.Requests).AbsolutePath);
+    }
+
+    [Fact]
+    public async Task Bewertung_als_Regel_auch_ohne_Navidromes_Auswertung()
+    {
+        var client = Client(navidrome: true);
+        await AnalyzedAsync();
+        var files = await FilesAsync();
+        // Navidrome kennt die Playlist noch nicht, aber die Bewertungen: 5 und 3 Sterne.
+        CreateNavidromeDatabase(Path.Combine(_library.Library, "Playlists", "andere.nsp"), ("nd-a", files[0].Path), ("nd-b", files[1].Path));
+        await using (var connection = new SqliteConnection($"Data Source={Path.Combine(_library.MusicRoot, "navidrome", "navidrome.db")};Pooling=False"))
+        {
+            connection.Open();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE "user" (id TEXT PRIMARY KEY, user_name TEXT); INSERT INTO "user" VALUES ('u-1', 'marcel');
+                CREATE TABLE annotation (user_id TEXT, item_id TEXT, item_type TEXT, rating INTEGER);
+                INSERT INTO annotation VALUES ('u-1', 'nd-a', 'media_file', 5), ('u-1', 'nd-b', 'media_file', 3);
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var response = await client.PostAsJsonAsync("/api/smart-playlists", Input("Lieblinge", minRating: 4), Json, Ct);
+        var created = (await response.Content.ReadFromJsonAsync<SmartPlaylistInfo>(Json, Ct))!;
+        var tracks = await client.GetFromJsonAsync<SmartPlaylistTracks>($"/api/smart-playlists/{created.Id}/tracks", Json, Ct);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(4, created.MinRating);
+        Assert.Equal("[4,5]", Nsp(Path.Combine(_library.Library, created.Path))["all"]![0]!["inTheRange"]!["rating"]!.ToJsonString());
+        Assert.False(tracks!.FromNavidrome);
+        Assert.Equal([files[0].Id], tracks.Items.Select(i => i.FileId));
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/smart-playlists", Input("Zu viel", minRating: 6), Json, Ct)).StatusCode);
     }
 
     private sealed class FakeNavidrome : HttpMessageHandler

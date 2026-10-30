@@ -3,11 +3,15 @@
 import { onMounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
+import Rating from 'primevue/rating'
 import { api, formatDuration } from '@/api'
 import { usePlayerStore } from '@/stores/player'
+import { useRatingsStore } from '@/stores/ratings'
 import LyricsPanel from './LyricsPanel.vue'
+import ShuffleIcon from './ShuffleIcon.vue'
 
 const player = usePlayerStore()
+const ratings = useRatingsStore()
 const audio = ref<HTMLAudioElement | null>(null)
 const position = ref(0)
 const duration = ref(0)
@@ -59,6 +63,9 @@ onMounted(() => {
   load(false)
   registerMediaSession()
 })
+watch(() => player.current?.fileId, (fileId) => fileId !== undefined && ratings.load([fileId]), { immediate: true })
+
+const repeatLabel = { off: 'Wiederholen: aus', all: 'Wiederholen: alle', one: 'Wiederholen: dieses Stück' } as const
 
 function onTimeUpdate() {
   const el = audio.value!
@@ -167,7 +174,7 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
     @loadeddata="onLoaded"
     @play="player.playing = true"
     @pause="onPause"
-    @ended="player.next()"
+    @ended="player.finished()"
     @error="onError"
   />
   <div
@@ -192,13 +199,32 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
         <div class="min-w-0">
           <div class="truncate font-medium" data-testid="player-title">{{ player.current.title }}</div>
           <div class="truncate text-sm text-surface-500">
-            <template v-if="error"><span class="text-red-500">{{ error }}</span></template>
+            <template v-if="error || ratings.error"><span class="text-red-500">{{ error ?? ratings.error }}</span></template>
             <template v-else>{{ player.current.artist }} · {{ player.current.album }}</template>
           </div>
         </div>
       </RouterLink>
+      <Rating
+        :model-value="ratings.of(player.current.fileId)"
+        class="hidden md:flex"
+        aria-label="Bewertung"
+        data-testid="player-rating"
+        @update:model-value="(value: number | null) => ratings.rate(player.current!.fileId, value ?? 0)"
+      />
       <span class="hidden sm:inline text-sm text-surface-500 tabular-nums">{{ time(position) }} / {{ time(duration) }}</span>
       <div class="flex items-center">
+        <Button
+          icon="pi pi-replay"
+          text
+          rounded
+          :severity="player.repeat === 'off' ? 'secondary' : undefined"
+          :badge="player.repeat === 'one' ? '1' : undefined"
+          :aria-label="repeatLabel[player.repeat]"
+          :title="repeatLabel[player.repeat]"
+          :aria-pressed="player.repeat !== 'off'"
+          data-testid="player-repeat"
+          @click="player.cycleRepeat()"
+        />
         <Button icon="pi pi-step-backward" text rounded aria-label="Zurück" @click="previous" />
         <Button
           :icon="player.playing ? 'pi pi-pause' : 'pi pi-play'"
@@ -207,7 +233,7 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
           data-testid="player-toggle"
           @click="player.toggle()"
         />
-        <Button icon="pi pi-step-forward" text rounded aria-label="Weiter" :disabled="player.index >= player.queue.length - 1" data-testid="player-next" @click="player.next()" />
+        <Button icon="pi pi-step-forward" text rounded aria-label="Weiter" :disabled="!player.hasNext" data-testid="player-next" @click="player.next()" />
         <Button icon="pi pi-align-left" text rounded aria-label="Songtext" data-testid="player-lyrics" @click="lyricsVisible = true" />
         <Button icon="pi pi-list" text rounded aria-label="Warteschlange" data-testid="player-queue" @click="queueVisible = true" />
       </div>
@@ -239,6 +265,17 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
       </li>
     </ol>
     <template #footer>
+      <Button
+        label="Rest mischen"
+        severity="secondary"
+        size="small"
+        class="mr-2"
+        :disabled="player.index >= player.queue.length - 1"
+        data-testid="queue-shuffle"
+        @click="player.shuffleUpcoming()"
+      >
+        <template #icon="{ class: iconClass }"><ShuffleIcon :class="iconClass" /></template>
+      </Button>
       <Button label="Leeren" icon="pi pi-trash" severity="secondary" size="small" :disabled="!player.queue.length" @click="(player.clear(), (queueVisible = false))" />
     </template>
   </Drawer>

@@ -132,16 +132,22 @@ public sealed class NavidromeClient(
         return connection;
     }
 
+    /// <summary>So kann der Pfad in navidrome.db stehen: relativ oder absolut, in NFC oder NFD.</summary>
+    private string[] PathCandidates(string libraryPath)
+    {
+        var relative = libraryPath.Replace('\\', '/');
+        var absolute = Path.Combine(Path.GetFullPath(tonregal.Value.Library), relative);
+        return [.. new[] { relative, absolute }
+            .SelectMany(p => new[] { p.Normalize(NormalizationForm.FormC), p.Normalize(NormalizationForm.FormD) })
+            .Distinct()];
+    }
+
     /// <param name="table"><c>media_file</c> oder <c>playlist</c>, beide mit Spalten <c>id</c> und <c>path</c>.</param>
     private async Task<string?> FindIdAsync(string table, string libraryPath, CancellationToken ct)
     {
         if (!O.Configured || !File.Exists(Database))
             return null;
-        var relative = libraryPath.Replace('\\', '/');
-        var absolute = Path.Combine(Path.GetFullPath(tonregal.Value.Library), relative);
-        string[] candidates = [.. new[] { relative, absolute }
-            .SelectMany(p => new[] { p.Normalize(NormalizationForm.FormC), p.Normalize(NormalizationForm.FormD) })
-            .Distinct()];
+        var candidates = PathCandidates(libraryPath);
         try
         {
             await using var connection = await OpenAsync(ct);
@@ -155,6 +161,75 @@ public sealed class NavidromeClient(
         {
             logger.LogWarning("navidrome.db nicht lesbar ({Database}): {Message}", Database, e.Message);
             return null;
+        }
+    }
+
+    /// <remarks>
+    /// Aus navidrome.db statt über die API, weil ein Album sonst eine Anfrage je Stück bräuchte. Navidrome legt
+    /// Bewertungen, Play-Counts und Sterne je Benutzer in <c>annotation</c> ab.
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<string, int>> RatingsAsync(IReadOnlyCollection<string> libraryPaths, CancellationToken ct)
+    {
+        var ratings = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (!O.Configured || !File.Exists(Database) || libraryPaths.Count == 0)
+            return ratings;
+        try
+        {
+            await using var connection = await OpenAsync(ct);
+            // Höchstens 4 Schreibweisen je Pfad; SQLite erlaubt nur begrenzt viele Parameter je Abfrage.
+            foreach (var chunk in libraryPaths.Distinct(StringComparer.Ordinal).Chunk(100))
+            {
+                var byCandidate = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var path in chunk)
+                {
+                    foreach (var candidate in PathCandidates(path))
+                        byCandidate.TryAdd(candidate, path);
+                }
+
+                await using var command = connection.CreateCommand();
+                command.CommandText = $"""
+                    SELECT m.path, a.rating FROM media_file m
+                    JOIN annotation a ON a.item_id = m.id AND a.item_type = 'media_file'
+                    JOIN "user" u ON u.id = a.user_id
+                    WHERE u.user_name = $user COLLATE NOCASE AND a.rating > 0
+                      AND m.path IN ({string.Join(", ", byCandidate.Keys.Select((_, i) => $"$p{i}"))})
+                    """;
+                command.Parameters.AddWithValue("$user", O.User);
+                var index = 0;
+                foreach (var candidate in byCandidate.Keys)
+                    command.Parameters.AddWithValue($"$p{index++}", candidate);
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    if (byCandidate.TryGetValue(reader.GetString(0), out var path))
+                        ratings[path] = Math.Clamp(reader.GetInt32(1), 1, 5);
+                }
+            }
+        }
+        catch (SqliteException e)
+        {
+            logger.LogWarning("Bewertungen aus navidrome.db nicht lesbar ({Database}): {Message}", Database, e.Message);
+        }
+
+        return ratings;
+    }
+
+    public async Task<bool> SetRatingAsync(string songId, int rating, CancellationToken ct)
+    {
+        try
+        {
+            using var response = await http.GetAsync(
+                Url("setRating", $"id={Uri.EscapeDataString(songId)}&rating={Math.Clamp(rating, 0, 5)}&f=json"), ct);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            var ok = json.RootElement.GetProperty("subsonic-response").GetProperty("status").GetString() == "ok";
+            if (!ok)
+                logger.LogWarning("Navidrome nimmt die Bewertung für {Id} nicht an: {Body}", songId, Truncate(json.RootElement.ToString()));
+            return ok;
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            logger.LogWarning("Bewertung an Navidrome fehlgeschlagen: {Message}", e.Message);
+            return false;
         }
     }
 

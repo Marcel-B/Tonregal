@@ -6,19 +6,25 @@ import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import Button from 'primevue/button'
+import Rating from 'primevue/rating'
 import AlbumCover from '@/components/AlbumCover.vue'
 import MatchDialog from '@/components/MatchDialog.vue'
+import ShuffleIcon from '@/components/ShuffleIcon.vue'
 import { api, formatDuration, type AlbumDetail, type FileDto, type TrackDto } from '@/api'
 import { albumQueue, usePlayerStore } from '@/stores/player'
+import { useRatingsStore } from '@/stores/ratings'
 
 const props = defineProps<{ id: number }>()
 const player = usePlayerStore()
+const ratings = useRatingsStore()
 const album = ref<AlbumDetail | null>(null)
 const error = ref<string | null>(null)
 
 async function load() {
   try {
     album.value = await api.album(props.id)
+    // Bewertet wird die Datei, die der Player spielt: die bevorzugte des Tracks.
+    ratings.load(album.value.tracks.flatMap((t) => (t.files[0] ? [t.files[0].id] : [])))
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }
@@ -86,6 +92,7 @@ function openMatch(track: TrackDto) {
 
 <template>
   <Message v-if="error" severity="error">{{ error }}</Message>
+  <Message v-if="ratings.error" severity="warn" closable class="mb-3" @close="ratings.error = null">{{ ratings.error }}</Message>
   <template v-if="album">
     <RouterLink :to="{ name: 'artist', params: { id: album.albumArtist.id } }" class="text-sm text-surface-500 hover:underline">
       <i class="pi pi-arrow-left text-xs" /> {{ album.albumArtist.name }}
@@ -108,6 +115,16 @@ function openMatch(track: TrackDto) {
             data-testid="enqueue-album"
             @click="player.enqueue(albumQueue(album))"
           />
+          <Button
+            label="Zufällig"
+            size="small"
+            severity="secondary"
+            :disabled="!album.tracks.length"
+            data-testid="shuffle-album"
+            @click="player.playShuffled(albumQueue(album))"
+          >
+            <template #icon="{ class: iconClass }"><ShuffleIcon :class="iconClass" /></template>
+          </Button>
         </div>
         <div v-if="album.canFetchCover" class="mt-3 flex items-center gap-3">
           <Button label="Cover suchen" icon="pi pi-image" severity="secondary" size="small" :loading="fetchingCover" data-testid="fetch-cover" @click="fetchCover" />
@@ -151,6 +168,16 @@ function openMatch(track: TrackDto) {
         <template #body="{ data }">{{ data.bpm ? Math.round(data.bpm) : '' }}</template>
       </Column>
       <Column field="initialKey" header="Tonart" class="w-20" />
+      <Column header="Bewertung" class="w-32">
+        <template #body="{ data }">
+          <Rating
+            v-if="data.files.length"
+            :model-value="ratings.of(data.files[0].id)"
+            data-testid="track-rating"
+            @update:model-value="(value: number | null) => ratings.rate(data.files[0].id, value ?? 0)"
+          />
+        </template>
+      </Column>
       <Column header="Format" class="w-40">
         <template #body="{ data }">
           <div class="flex gap-1 flex-wrap">

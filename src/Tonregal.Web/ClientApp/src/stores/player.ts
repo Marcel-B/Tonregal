@@ -15,6 +15,20 @@ export interface QueueItem {
 
 const storageKey = 'tonregal.player'
 
+/** Wie in der Musik-App: aus, die ganze Warteschlange, das laufende Stück. */
+export type RepeatMode = 'off' | 'all' | 'one'
+const repeatModes: RepeatMode[] = ['off', 'all', 'one']
+
+/** Mischt eine Kopie (Fisher-Yates). */
+export function shuffled<T>(items: readonly T[]): T[] {
+  const copy = [...items]
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[copy[i], copy[j]] = [copy[j]!, copy[i]!]
+  }
+  return copy
+}
+
 /** Tracks eines Albums in Abspielreihenfolge; Tracks ohne Datei fallen weg, je Track die bevorzugte Datei (FLAC zuerst). */
 export function albumQueue(album: AlbumDetail): QueueItem[] {
   return album.tracks
@@ -39,6 +53,7 @@ export const usePlayerStore = defineStore('player', () => {
   const index = ref(-1)
   const playing = ref(false)
   const startToken = ref(0)
+  const repeat = ref<RepeatMode>('off')
   const current = computed(() => queue.value[index.value] ?? null)
 
   try {
@@ -47,12 +62,13 @@ export const usePlayerStore = defineStore('player', () => {
       queue.value = saved.queue
       index.value = Math.min(saved.index ?? 0, saved.queue.length - 1)
     }
+    if (repeatModes.includes(saved?.repeat)) repeat.value = saved.repeat
   } catch {
     // ohne Speicher eben mit leerer Queue
   }
-  watch([queue, index], () => {
+  watch([queue, index, repeat], () => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ queue: queue.value, index: index.value }))
+      localStorage.setItem(storageKey, JSON.stringify({ queue: queue.value, index: index.value, repeat: repeat.value }))
     } catch {
       // privates Fenster o. ä.
     }
@@ -66,7 +82,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function play(items: QueueItem[], at = 0) {
-    queue.value = items
+    queue.value = [...items]
     start(items.length ? Math.max(0, Math.min(at, items.length - 1)) : -1)
   }
 
@@ -74,6 +90,22 @@ export const usePlayerStore = defineStore('player', () => {
     const items = albumQueue(album)
     play(items, Math.max(0, items.findIndex((i) => i.trackId === trackId)))
   }
+
+  function playShuffled(items: QueueItem[]) {
+    play(shuffled(items))
+  }
+
+  /** Mischt, was nach dem laufenden Stück kommt. */
+  function shuffleUpcoming() {
+    const at = index.value + 1
+    queue.value.splice(at, queue.value.length - at, ...shuffled(queue.value.slice(at)))
+  }
+
+  function cycleRepeat() {
+    repeat.value = repeatModes[(repeatModes.indexOf(repeat.value) + 1) % repeatModes.length]!
+  }
+
+  const hasNext = computed(() => index.value < queue.value.length - 1 || (repeat.value === 'all' && queue.value.length > 0))
 
   /** Hinten anhängen; bei leerer Queue gleich abspielen. */
   function enqueue(items: QueueItem[]) {
@@ -88,9 +120,17 @@ export const usePlayerStore = defineStore('player', () => {
     queue.value.splice(index.value + 1, 0, ...items)
   }
 
+  /** Weiter per Knopf; „ein Stück wiederholen“ gilt hier nicht, sonst käme man nie weiter. */
   function next() {
     if (index.value < queue.value.length - 1) start(index.value + 1)
+    else if (repeat.value === 'all' && queue.value.length) start(0)
     else playing.value = false
+  }
+
+  /** Das Stück ist zu Ende gespielt. */
+  function finished() {
+    if (repeat.value === 'one') start(index.value)
+    else next()
   }
 
   function previous() {
@@ -123,5 +163,27 @@ export const usePlayerStore = defineStore('player', () => {
     if (current.value) playing.value = !playing.value
   }
 
-  return { queue, index, playing, startToken, current, play, playAlbum, enqueue, playNext, next, previous, jump, remove, clear, toggle }
+  return {
+    queue,
+    index,
+    playing,
+    startToken,
+    repeat,
+    current,
+    hasNext,
+    play,
+    playAlbum,
+    playShuffled,
+    shuffleUpcoming,
+    cycleRepeat,
+    enqueue,
+    playNext,
+    next,
+    finished,
+    previous,
+    jump,
+    remove,
+    clear,
+    toggle,
+  }
 })

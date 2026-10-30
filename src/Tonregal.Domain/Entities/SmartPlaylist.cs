@@ -27,6 +27,9 @@ public class SmartPlaylist
     /// <summary>Nur Stücke, die in Navidrome noch nie gespielt wurden.</summary>
     public bool NeverPlayed { get; set; }
 
+    /// <summary>Nur Stücke mit mindestens so vielen Sternen (1 bis 5); bewertet wird in Navidrome.</summary>
+    public int? MinRating { get; set; }
+
     public SmartPlaylistSort Sort { get; set; }
     public int? Limit { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

@@ -8,6 +8,7 @@ import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import MultiSelect from 'primevue/multiselect'
+import Rating from 'primevue/rating'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import { api, type KeyCount, type SmartPlaylist, type SmartPlaylistInput, type SmartPlaylistSort } from '@/api'
@@ -85,6 +86,7 @@ const blank = (): SmartPlaylistInput => ({
   genre: null,
   addedWithinDays: null,
   neverPlayed: false,
+  minRating: null,
   sort: 'Random',
   limit: null,
 })
@@ -103,6 +105,7 @@ function edit(playlist: SmartPlaylist | null) {
           genre: playlist.genre,
           addedWithinDays: playlist.addedWithinDays,
           neverPlayed: playlist.neverPlayed,
+          minRating: playlist.minRating,
           sort: playlist.sort,
           limit: playlist.limit,
         },
@@ -153,6 +156,7 @@ function rules(p: SmartPlaylist): string[] {
   if (p.genre) list.push(`Genre „${p.genre}“`)
   if (p.addedWithinDays !== null) list.push(`neu seit ${p.addedWithinDays} Tagen`)
   if (p.neverPlayed) list.push('nie gehört')
+  if (p.minRating !== null) list.push(p.minRating === 5 ? '5 Sterne' : `ab ${p.minRating} Sternen`)
   return list
 }
 
@@ -224,6 +228,17 @@ const sortLabel = (sort: SmartPlaylistSort) => sorts.find((s) => s.value === sor
             <Checkbox v-model="editing.input.neverPlayed" binary />
             <span>Nur nie gehörte Stücke</span>
           </label>
+          <div class="flex flex-col gap-1">
+            <span class="text-sm">Mindestens bewertet mit</span>
+            <div class="flex items-center gap-3">
+              <Rating
+                :model-value="editing.input.minRating ?? undefined"
+                data-testid="min-rating"
+                @update:model-value="(value: number | null) => (editing!.input.minRating = value || null)"
+              />
+              <span class="text-sm text-surface-500">{{ editing.input.minRating ? `${editing.input.minRating} Sternen` : 'egal' }}</span>
+            </div>
+          </div>
           <div class="flex flex-wrap gap-3">
             <label class="flex flex-col gap-1">
               <span class="text-sm">Sortierung</span>
@@ -252,7 +267,7 @@ const sortLabel = (sort: SmartPlaylistSort) => sorts.find((s) => s.value === sor
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span>{{ p.name }}</span>
           <span class="text-sm font-normal text-surface-500" data-testid="matching">
-            {{ p.neverPlayed ? 'höchstens ' : '' }}{{ p.matching }} Stück{{ p.matching === 1 ? '' : 'e' }}
+            {{ p.neverPlayed || p.minRating !== null ? 'höchstens ' : '' }}{{ p.matching }} Stück{{ p.matching === 1 ? '' : 'e' }}
           </span>
         </div>
       </template>

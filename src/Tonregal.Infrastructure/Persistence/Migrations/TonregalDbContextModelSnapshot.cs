@@ -445,6 +445,9 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.Property<int?>("Limit")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("MinRating")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
