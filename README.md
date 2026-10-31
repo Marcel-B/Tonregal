@@ -312,6 +312,9 @@ Tonregal und Navidrome melden sich beim Monitoring-Stack (Prometheus, Loki, Graf
 ```
 
 Danach `tonregal-restart tonregal`. Beim Start steht im Log, ob `/metrics` und der Versand an Loki an sind.
+`deploy/monitoring-einrichten.sh` erledigt das alles in einem Lauf: Es trägt den Abschnitt ein (andere Einträge
+bleiben), rollt den neuesten Stand aus oder startet Tonregal neu, schreibt Navidromes Konfiguration neu, prüft beide
+`/metrics` und Loki und nennt am Ende den Aufruf für den Proxmox-Host, der die Ziele in Prometheus einträgt.
 `GET /metrics` hat keine Anmeldung und nennt nur Zahlen, keine Titel, Pfade oder Keys:
 
 | Messwert | Art | Bedeutung |
