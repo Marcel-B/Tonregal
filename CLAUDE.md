@@ -18,3 +18,6 @@ dessen `CONTRIBUTING.md` (Projektseite `content/projekte/tonregal/projekt.md`, W
 ## Konventionen
 
 - Commit-Nachrichten und Branch-Namen sind deutsch.
+- Messwerte stehen in `src/Tonregal.Infrastructure/Monitoring/TonregalMetrics.cs` (Präfix `tonregal_`, Labels nur mit
+  wenigen festen Werten, nie Titel, Pfade oder Keys; Tabelle im README-Abschnitt „Überwachung“). Das Dashboard liegt in
+  Tonwerk-AI unter `deploy/monitoring/` (`tonregal.json`); keinen Namen umbenennen, ohne es mitzuziehen.

@@ -2,7 +2,9 @@
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Prometheus;
 using Serilog;
+using Serilog.Events;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Infrastructure;
@@ -13,8 +15,12 @@ using Tonregal.Web.Backup;
 using Tonregal.Web.Hubs;
 using Tonregal.Web.Inbox;
 using Tonregal.Web.Library;
+using Tonregal.Web.Monitoring;
 
 var builder = WebApplication.CreateBuilder(args);
+var metrics = MonitoringSetup.MetricsEnabled(builder.Configuration);
+if (metrics)
+    MonitoringSetup.RegisterMetrics();
 
 builder.Services.AddSerilog((services, logger) =>
 {
@@ -22,7 +28,8 @@ builder.Services.AddSerilog((services, logger) =>
     logger
         .ReadFrom.Configuration(builder.Configuration)
         .Enrich.FromLogContext()
-        .WriteTo.Console();
+        .WriteTo.Console()
+        .WriteToLoki(builder.Configuration);
     if (Directory.Exists(options.MusicRoot))
         logger.WriteTo.File(Path.Combine(options.Logs, "tonregal-.log"), rollingInterval: RollingInterval.Day, retainedFileCountLimit: 30);
 });
@@ -68,15 +75,28 @@ await using (var scope = app.Services.CreateAsyncScope())
         app.Logger.LogWarning("Smart Playlists nicht geschrieben: {Message}", e.Message);
     }
     app.Logger.LogInformation("Tonregal gestartet, Library {Library}, Datenbank {Database}", options.Library, db.Database.GetDbConnection().DataSource);
+    app.Logger.LogInformation("Monitoring: /metrics {Metrics}, Logs an Loki {Loki}",
+        metrics ? "an" : "aus", string.IsNullOrEmpty(app.Configuration[MonitoringSetup.LokiUrlKey]) ? "aus" : app.Configuration[MonitoringSetup.LokiUrlKey]);
 }
 
-app.UseSerilogRequestLogging();
+// Prometheus fragt alle paar Sekunden; diese Anfragen gehören nicht ins Protokoll.
+app.UseSerilogRequestLogging(o => o.GetLevel = (context, _, error) =>
+    error is not null || context.Response.StatusCode >= 500 ? LogEventLevel.Error
+    : context.Request.Path == "/metrics" ? LogEventLevel.Verbose
+    : LogEventLevel.Information);
+if (metrics)
+{
+    MonitoringSetup.UseServices(app.Services);
+    app.UseHttpMetrics();
+}
 app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi().MapIngestApi().MapSettingsApi().MapSmartPlaylistsApi().MapListeningApi();
 app.MapHub<StatusHub>("/hub");
+if (metrics)
+    app.MapMetrics();
 app.MapFallbackToFile("index.html");
 
 app.Run();

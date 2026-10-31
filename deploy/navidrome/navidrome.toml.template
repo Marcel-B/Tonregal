@@ -11,3 +11,9 @@ EnableExternalServices = false
 
 [Scanner]
 Schedule = "@every 15m"
+
+# Zahlen für Prometheus (Titel, Alben, Künstler, Scans, Anfragen) unter /metrics; der Monitoring-Stack
+# fragt sie über Tailscale ab. Ohne Inhalte, daher ohne Passwort.
+[Prometheus]
+Enabled = true
+MetricsPath = "/metrics"

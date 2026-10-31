@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
+using Tonregal.Infrastructure.Monitoring;
 using Tonregal.Web.Inbox;
 
 namespace Tonregal.Web.Api;
@@ -37,7 +38,10 @@ public static class IngestApi
                 IIngestKeys keys, IIngestService service, InboxService inbox, CancellationToken ct) =>
             {
                 if (await AuthenticateAsync(request, keys, ct) is not { } source)
+                {
+                    TonregalMetrics.Ingest.WithLabels("refused").Inc();
                     return await UnauthorizedAsync(keys, ct);
+                }
 
                 IngestMetadata? parsed;
                 try
@@ -46,11 +50,15 @@ public static class IngestApi
                 }
                 catch (JsonException e)
                 {
+                    TonregalMetrics.Ingest.WithLabels("refused").Inc();
                     return TypedResults.Problem($"metadata ist kein gültiges JSON: {e.Message}", statusCode: StatusCodes.Status400BadRequest);
                 }
 
                 if (parsed is null)
+                {
+                    TonregalMetrics.Ingest.WithLabels("refused").Inc();
                     return TypedResults.Problem("metadata fehlt", statusCode: StatusCodes.Status400BadRequest);
+                }
 
                 IngestResult result;
                 try
@@ -61,14 +69,17 @@ public static class IngestApi
                 }
                 catch (ArgumentException e)
                 {
+                    TonregalMetrics.Ingest.WithLabels("refused").Inc();
                     return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status400BadRequest);
                 }
                 catch (LibraryUnavailableException e)
                 {
+                    TonregalMetrics.Ingest.WithLabels("refused").Inc();
                     return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
                 }
 
                 var job = result.Job;
+                TonregalMetrics.Ingest.WithLabels(result.Created ? "accepted" : "known").Inc();
                 // Wiederholter Aufruf nach gescheiterter Übernahme: erneut versuchen.
                 if (job.State == ImportState.Matched && (result.Created || job.Error is not null))
                     inbox.EnqueueImports([job.Id]);

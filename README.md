@@ -296,6 +296,50 @@ tonregal-log [tonregal|navidrome]
 tonregal-restart [tonregal|navidrome]
 ```
 
+### Überwachung
+
+Tonregal und Navidrome melden sich beim Monitoring-Stack (Prometheus, Loki, Grafana; Repository Tonwerk-AI,
+`deploy/monitoring/`, Dashboard „Tonregal“). Beides ist ohne Eintrag aus und wird in
+`/Volumes/T7/Musik/app/appsettings.Production.json` eingeschaltet:
+
+```json
+{
+  "Monitoring": {
+    "Metrics": true,
+    "Loki": { "Url": "http://monitoring:3100" }
+  }
+}
+```
+
+Danach `tonregal-restart tonregal`. Beim Start steht im Log, ob `/metrics` und der Versand an Loki an sind.
+`GET /metrics` hat keine Anmeldung und nennt nur Zahlen, keine Titel, Pfade oder Keys:
+
+| Messwert | Art | Bedeutung |
+|---|---|---|
+| `tonregal_inbox_files_total{result}` | Zähler | Dateien der Inbox: `matched`, `unmatched`, `duplicate`, `imported`, `failed` |
+| `tonregal_inbox_waiting{state}` | Gauge | Jobs der Inbox, die noch warten: `new`, `matched`, `review` |
+| `tonregal_ingest_total{result}` | Zähler | Übergaben über die Ingest-API (Tonwerk-AI): `accepted`, `known`, `refused` |
+| `tonregal_musicbrainz_requests_total{result}` | Zähler | Anfragen an MusicBrainz ohne Cache-Treffer: `match`, `none` (404), `error`, `rate_limited` (je 503/429) |
+| `tonregal_scan_runs_total{result}` | Zähler | Library-Scans: `success`, `skipped` (SSD nicht da), `failure` |
+| `tonregal_scan_duration_seconds` | Histogramm | Dauer eines Scans samt Dublettensuche |
+| `tonregal_analysis_total{result}` | Zähler | analysierte Dateien: `done`, `failed` |
+| `tonregal_analysis_waiting` | Gauge | Dateien, die noch auf die Analyse warten |
+| `tonregal_tracks` | Gauge | Titel im Index |
+| `tonregal_duplicates` | Gauge | erkannte Dublettengruppen |
+| `tonregal_library_bytes` | Gauge | Größe der Library, höchstens stündlich gezählt (die T7 hängt per USB) |
+| `tonregal_backup_runs_total{result}` | Zähler | Backup-Läufe: `succeeded`, `failed` |
+| `tonregal_backup_last_success_timestamp_seconds` | Gauge | letztes erfolgreiches Backup (der Stack alarmiert, wenn es zu alt ist) |
+| `tonregal_music_root_mounted` | Gauge | 1, wenn der Mount-Marker der T7 da ist |
+| `http_requests_received_total` und `http_request_duration_seconds` | | Anfragen von prometheus-net |
+
+Die Logzeilen gehen mit den Labels `app=tonregal`, `host`, `level` und `source` an Loki (`inbox`, `scan`,
+`analysis`, `backup`, `ingest`, `navidrome`, sonst `server`; `host` ist der Rechnername oder `Monitoring:Loki:Host`).
+Datei- und Konsolen-Log bleiben, wie sie sind. Die Anfragen von Prometheus an `/metrics` stehen nicht im Log.
+
+Navidrome liefert eigene Zahlen (Titel, Alben, Künstler, Scans, Anfragen) unter `http://<Tailscale-IP>:4533/metrics`;
+`setup-navidrome.sh` schreibt dafür `[Prometheus]` in die `navidrome.toml`, nach einer Änderung also das Script
+erneut ausführen. Navidromes eigenes Log bleibt lokal.
+
 ## iPhone-App
 
 Unter `apple/` liegt ein nativer Player (SwiftUI) für iPhone und iPad, der Hintergrund-Wiedergabe und Sperrbildschirm

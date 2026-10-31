@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.SignalR;
 using Tonregal.Application.Abstractions;
+using Tonregal.Infrastructure.Monitoring;
 using Tonregal.Web.Hubs;
 
 namespace Tonregal.Web.Library;
@@ -42,6 +44,7 @@ public sealed class LibraryScanService(
     private async Task RunAsync(CancellationToken ct)
     {
         await PublishAsync(_status with { Running = true, Progress = null }, ct);
+        var started = Stopwatch.GetTimestamp();
         try
         {
             await using var scope = scopes.CreateAsyncScope();
@@ -51,6 +54,8 @@ public sealed class LibraryScanService(
             var duplicates = scope.ServiceProvider.GetRequiredService<IDuplicateService>();
             await duplicates.DetectAsync(ct);
             duplicates.PurgeTrash();
+            TonregalMetrics.ScanRuns.WithLabels("success").Inc();
+            TonregalMetrics.ScanDuration.Observe(Stopwatch.GetElapsedTime(started).TotalSeconds);
             await PublishAsync(new ScanStatus(false, null, time.GetUtcNow(), result, null), ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -62,6 +67,7 @@ public sealed class LibraryScanService(
                 logger.LogWarning("Library-Scan übersprungen: {Message}", e.Message);
             else
                 logger.LogError(e, "Library-Scan fehlgeschlagen");
+            TonregalMetrics.ScanRuns.WithLabels(e is LibraryUnavailableException ? "skipped" : "failure").Inc();
             await PublishAsync(_status with { Running = false, Progress = null, LastRunAt = time.GetUtcNow(), LastError = e.Message }, ct);
         }
     }
