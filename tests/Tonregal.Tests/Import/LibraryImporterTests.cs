@@ -251,6 +251,27 @@ public sealed class LibraryImporterTests : IDisposable
         Assert.Equal(("La Foule", "Meret Becker & Ars Vitalis", "1993-'95", 7), (tags.Title, tags.AlbumArtist, tags.Album, tags.Track));
     }
 
+    [Fact]
+    public async Task Erkannt_ohne_Release_geht_mit_den_Tags_der_Datei()
+    {
+        var target = Path.Combine(Inbox, "Billy Idol");
+        _library.Copy("song1.mp3", target, "Find A Way.mp3");
+        new TagLibTagWriter().WriteBasic(Path.Combine(target, "Find A Way.mp3"), "Find A Way", ["Billy Idol"], "Billy Idol", "Not Released");
+        var job = new ImportJob
+        {
+            SourcePath = "Billy Idol/Find A Way.mp3", State = ImportState.Matched, SelectedRecordingId = Guid.NewGuid(),
+        };
+        _db.ImportJobs.Add(job);
+        await _db.SaveChangesAsync(Ct);
+
+        var result = await Importer().ImportAsync(job.Id, Ct);
+
+        Assert.Null(result.Error);
+        Assert.Equal(ImportState.Imported, result.State);
+        var tags = _reader.Read(Path.Combine(_library.Library, result.LibraryPath!)).Tags;
+        Assert.Equal(("Find A Way", "Billy Idol", "Not Released"), (tags.Title, tags.AlbumArtist, tags.Album));
+    }
+
     private async Task<ImportJob> UnmatchedJobAsync(string sourcePath)
     {
         var job = new ImportJob { SourcePath = sourcePath, State = ImportState.NeedsReview };

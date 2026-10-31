@@ -412,6 +412,9 @@ public sealed partial class InboxImporter(
         var durationMismatch = good.Count == 0;
         if (durationMismatch)
             good = candidates.Where(c => c.Score >= Math.Min(autoMatchScore, bestScore)).ToList();
+        // Treffer auf einem Release vor Aufnahmen ohne Release (Demos, „Not Released“): nur mit
+        // Release gibt es Album, Jahr und Tracknummer. Die Sortierung ist stabil, sonst bleibt alles.
+        good = good.OrderBy(c => c.ReleaseId is null).ToList();
         // Fremde Interpreten mit demselben Fingerprint (Cover-Versionen, falsche AcoustID-Zuordnung)
         // aus dem Spiel nehmen, wenn es Treffer vom Interpreten aus den Tags gibt.
         if (tags.Artists.Count > 0 && good.Any(c => c.Artists.Count > 0 && MatchesArtist(c, tags)))

@@ -31,7 +31,12 @@ public sealed class LibraryImporter(
     private const string TempPrefix = ".tonregal-";
 
     public Task<ImportJob> ImportAsync(int jobId, CancellationToken ct) =>
-        RunAsync(jobId, (job, token) => job.Source == FileSource.Api ? ImportIngestAsync(job, token) : ImportAsync(job, token), ct);
+        RunAsync(jobId, (job, token) => job.Source == FileSource.Api ? ImportIngestAsync(job, token)
+            // Erkannt, aber die Aufnahme steht auf keinem Release: es gibt nichts als Titel und
+            // Interpret, also wie „Ohne Treffer übernehmen“ mit den Tags der Datei.
+            : job.State == ImportState.Matched && job.SelectedRecordingId is not null && job.SelectedReleaseId is null
+                ? ImportUnmatchedAsync(job, token)
+                : ImportAsync(job, token), ct);
 
     public Task<ImportJob> ImportUnmatchedAsync(int jobId, CancellationToken ct) => RunAsync(jobId, ImportUnmatchedAsync, ct);
 
