@@ -126,7 +126,35 @@ public sealed class FfmpegFallbackTests : IDisposable
 
         var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
 
-        Assert.Contains("Webseite (HTML)", e.Message);
+        Assert.Contains("enthält HTML", e.Message);
+    }
+
+    [Fact]
+    public void Ein_Stueck_Webseite_mitten_im_Text_wird_erkannt()
+    {
+        // Wie zarathustra2.wav: beginnt mitten in fremdem HTML.
+        var html = string.Concat(Enumerable.Repeat("alz.gif\" NOSAVE height=20 width=23 align=ABSBOTTOM>und&nbsp;<img SRC=\"images/Sulfur.gif\"> ", 400));
+        var path = Write("zarathustra2.wav", Encoding.ASCII.GetBytes(html));
+
+        var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
+
+        Assert.Contains("enthält HTML", e.Message);
+    }
+
+    [Fact]
+    public void Ungeordnete_Daten_ohne_Audio_Kopf_werden_benannt()
+    {
+        // Wie Jolene.mp3: vom ersten Byte an Zufall, kein ID3, kein Frame.
+        var noise = new byte[200_000];
+        new Random(7).NextBytes(noise);
+        for (var i = 0; i < noise.Length; i++)
+            if (noise[i] == 0xFF)
+                noise[i] = 0xFE;
+        var path = Write("Jolene.mp3", noise);
+
+        var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
+
+        Assert.Contains("ungeordnete Daten", e.Message);
     }
 
     [Fact]
