@@ -126,7 +126,7 @@ public sealed class FfmpegFallbackTests : IDisposable
 
         var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
 
-        Assert.Contains("enthält HTML", e.Message);
+        Assert.Contains("Webseite (HTML)", e.Message);
     }
 
     [Fact]
@@ -138,7 +138,44 @@ public sealed class FfmpegFallbackTests : IDisposable
 
         var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
 
-        Assert.Contains("enthält HTML", e.Message);
+        Assert.Contains("Webseite (HTML)", e.Message);
+    }
+
+    [Fact]
+    public void Ein_Stueck_PDF_wird_erkannt()
+    {
+        // Wie „Body Count's In The House.mp3“: Objekte einer PDF zwischen komprimierten Strömen.
+        var noise = new byte[3000];
+        new Random(3).NextBytes(noise);
+        var part = (byte[])[.. Encoding.ASCII.GetBytes("\n<< /Length 4135 /Filter /FlateDecode >>\nstream\n"), .. noise,
+            .. Encoding.ASCII.GetBytes("\nendstream\nendobj\n12 0 obj\n<< /Type /Page /Parent 3 0 R >>\nendobj\n")];
+        var path = Write("Body Count.mp3", [.. Enumerable.Repeat(part, 20).SelectMany(p => p)]);
+
+        var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
+
+        Assert.Contains("Stück einer PDF-Datei", e.Message);
+    }
+
+    [Fact]
+    public void Grossgeschriebenes_HTML_am_Anfang_ist_eine_Webseite()
+    {
+        var noise = new byte[50_000];
+        new Random(5).NextBytes(noise);
+        var path = Write("Celine Dion.mp3", [.. Encoding.ASCII.GetBytes("<HTML>\r\n<HEAD>\r\n"), .. noise]);
+
+        var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
+
+        Assert.Contains("Webseite (HTML)", e.Message);
+    }
+
+    [Fact]
+    public void Meldung_von_TagLib_und_Zusatz_sind_durch_einen_Punkt_getrennt()
+    {
+        var path = Write("Virtual Booster.wav", Encoding.ASCII.GetBytes(new string('x', 10_000)));
+
+        var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
+
+        Assert.Contains("RIFF identifier. Die Datei", e.Message);
     }
 
     [Fact]
@@ -154,7 +191,7 @@ public sealed class FfmpegFallbackTests : IDisposable
 
         var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
 
-        Assert.Contains("ungeordnete Daten", e.Message);
+        Assert.Contains("fremde Daten ohne einen einzigen Audio-Kopf", e.Message);
     }
 
     [Fact]
