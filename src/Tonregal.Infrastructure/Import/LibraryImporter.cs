@@ -8,6 +8,7 @@ using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
 using Tonregal.Infrastructure.Library;
 using Tonregal.Infrastructure.Persistence;
+using Tonregal.Infrastructure.Tagging;
 using LibraryPathRule = Tonregal.Domain.ValueObjects.LibraryPath;
 
 namespace Tonregal.Infrastructure.Import;
@@ -21,6 +22,7 @@ public sealed class LibraryImporter(
     TonregalDbContext db,
     ITagReader tagReader,
     ITagWriter tagWriter,
+    FfmpegAudio ffmpeg,
     IMetadataLookup lookup,
     ICoverArtSource covers,
     LibraryWriteLock writeLock,
@@ -86,20 +88,20 @@ public sealed class LibraryImporter(
 
         var relative = LibraryPathRule.For(
             track.AlbumArtist, track.Year, track.Album, track.Kind,
-            track.Disc, track.DiscCount, track.Track, track.Title, Path.GetExtension(source));
+            track.Disc, track.DiscCount, track.Track, track.Title, LibraryExtension(source));
         var albumFolder = Path.GetDirectoryName(Path.Combine(Path.GetFullPath(options.Value.Library), relative))!;
         Directory.CreateDirectory(albumFolder);
         var cover = await CoverAsync(source, albumFolder, releaseId, track.ReleaseGroupId, ct);
 
-        Place(job, source, relative, temp =>
+        await PlaceAsync(job, source, relative, temp =>
         {
             tagWriter.Write(temp, track, cover);
             Verify(temp, track);
-        });
+        }, ct);
         job.SelectedReleaseId = releaseId;
     }
 
-    private Task ImportUnmatchedAsync(ImportJob job, CancellationToken ct)
+    private async Task ImportUnmatchedAsync(ImportJob job, CancellationToken ct)
     {
         if (job.State is not (ImportState.NeedsReview or ImportState.Matched))
             throw new InvalidOperationException("Nur zu prüfende Dateien lassen sich ohne Treffer übernehmen");
@@ -117,20 +119,20 @@ public sealed class LibraryImporter(
         var folder = album is null
             ? LibraryPathRule.AlbumFolder(albumArtist, null, LibraryScanner.UnknownAlbum, AlbumKind.Album)
             : LibraryPathRule.AlbumFolder(albumArtist, tags.Year, album, kind);
+        var extension = LibraryExtension(source);
         var fileName = album is not null && tags.Track is > 0 and var number
-            ? LibraryPathRule.FileName(tags.Disc ?? 1, tags.DiscCount ?? 1, number, title, Path.GetExtension(source))
-            : LibraryPathRule.Sanitize(title) + Path.GetExtension(source).ToLowerInvariant();
+            ? LibraryPathRule.FileName(tags.Disc ?? 1, tags.DiscCount ?? 1, number, title, extension)
+            : LibraryPathRule.Sanitize(title) + extension.ToLowerInvariant();
         var relative = Path.Combine(folder, fileName);
 
-        Place(job, source, relative, temp =>
+        await PlaceAsync(job, source, relative, temp =>
         {
             tagWriter.WriteBasic(temp, title, artists, albumArtist, album ?? LibraryScanner.UnknownAlbum);
             if (tagReader.Read(temp).Tags.Title != title)
                 throw new InvalidDataException($"Tags ließen sich nicht korrekt schreiben: {Path.GetFileName(source)}");
-        });
+        }, ct);
         job.SelectedRecordingId = null;
         job.SelectedReleaseId = null;
-        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -148,9 +150,10 @@ public sealed class LibraryImporter(
         var album = string.IsNullOrWhiteSpace(metadata.Album) ? metadata.Title : metadata.Album.Trim();
         var kind = string.IsNullOrWhiteSpace(metadata.Album) ? AlbumKind.Single : AlbumKind.Album;
         var folder = LibraryPathRule.AlbumFolder(metadata.Artist, metadata.Year, album, kind);
+        var extension = LibraryExtension(source);
         var fileName = metadata.Track is { } number
-            ? LibraryPathRule.FileName(1, 1, number, metadata.Title, Path.GetExtension(source))
-            : LibraryPathRule.Sanitize(metadata.Title) + Path.GetExtension(source).ToLowerInvariant();
+            ? LibraryPathRule.FileName(1, 1, number, metadata.Title, extension)
+            : LibraryPathRule.Sanitize(metadata.Title) + extension.ToLowerInvariant();
 
         var coverFile = source + IngestService.CoverSuffix;
         EmbeddedPicture? cover = null;
@@ -166,12 +169,12 @@ public sealed class LibraryImporter(
             }
         }
 
-        Place(job, source, Path.Combine(folder, fileName), temp =>
+        await PlaceAsync(job, source, Path.Combine(folder, fileName), temp =>
         {
             tagWriter.WriteIngest(temp, metadata, album, cover);
             if (tagReader.Read(temp).Tags.Title != metadata.Title)
                 throw new InvalidDataException($"Tags ließen sich nicht korrekt schreiben: {Path.GetFileName(source)}");
-        });
+        }, ct);
         if (File.Exists(coverFile))
             File.Delete(coverFile);
     }
@@ -193,10 +196,26 @@ public sealed class LibraryImporter(
     }
 
     /// <summary>
-    /// Tags in eine Kopie schreiben und prüfen, die Kopie atomar an ihren Platz in der Library legen,
-    /// erst dann das Original aus der Inbox löschen. Der Altbestand bleibt, wie er ist.
+    /// Endung in der Library: die eigene, solange TagLib die Datei öffnet. Sonst wird sie beim
+    /// Übernehmen neu verpackt und bekommt die Endung ihres Inhalts (ein „.mp3“ mit WAV darin wird „.wav“).
     /// </summary>
-    private void Place(ImportJob job, string source, string relative, Action<string> write)
+    private string LibraryExtension(string source)
+    {
+        if (TagLibTagReader.CanOpen(source))
+            return Path.GetExtension(source);
+        if (ffmpeg.Probe(source)?.Extension is { } extension)
+            return extension;
+        // Der Leser sagt, was in der Datei steckt.
+        tagReader.Read(source);
+        throw new InvalidDataException($"{Path.GetFileName(source)}: weder TagLib noch ffmpeg können die Datei lesen");
+    }
+
+    /// <summary>
+    /// Tags in eine Kopie schreiben und prüfen, die Kopie atomar an ihren Platz in der Library legen,
+    /// erst dann das Original aus der Inbox löschen. Der Altbestand bleibt, wie er ist. Was TagLib
+    /// nicht öffnet, kommt nicht als Kopie, sondern von ffmpeg ohne Neukodierung neu verpackt.
+    /// </summary>
+    private async Task PlaceAsync(ImportJob job, string source, string relative, Action<string> write, CancellationToken ct)
     {
         var inboxRoot = Path.GetFullPath(options.Value.Inbox);
         var libraryRoot = Path.GetFullPath(options.Value.Library);
@@ -208,10 +227,21 @@ public sealed class LibraryImporter(
         var libraryRelative = Path.GetRelativePath(libraryRoot, target).Replace(Path.DirectorySeparatorChar, '/');
 
         Directory.CreateDirectory(albumFolder);
-        var temp = Path.Combine(albumFolder, $"{TempPrefix}{Guid.NewGuid():N}{Path.GetExtension(source)}");
+        var temp = Path.Combine(albumFolder, $"{TempPrefix}{Guid.NewGuid():N}{Path.GetExtension(relative)}");
         try
         {
-            File.Copy(source, temp);
+            if (TagLibTagReader.CanOpen(source))
+            {
+                File.Copy(source, temp);
+            }
+            else
+            {
+                await ffmpeg.RemuxAsync(source, temp, ct);
+                if (!TagLibTagReader.CanOpen(temp))
+                    throw new InvalidDataException($"{Path.GetFileName(source)}: auch neu verpackt nicht lesbar");
+                logger.LogInformation("{Path}: von ffmpeg neu verpackt (TagLib konnte die Datei nicht öffnen)", job.SourcePath);
+            }
+
             write(temp);
             File.Move(temp, target, overwrite: false);
         }

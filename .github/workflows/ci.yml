@@ -18,10 +18,10 @@ jobs:
 
       # .NET aus dem Ubuntu-Archiv statt per setup-dotnet: dessen Download von Microsofts CDN
       # (dotnetorigin.blob.core.windows.net) liefert zeitweise 409. global.json erlaubt jedes 10.0-SDK.
-      - name: .NET SDK und Chromaprint (fpcalc) für die Fingerprint-Tests
+      - name: .NET SDK, Chromaprint (fpcalc) und ffmpeg für die Fingerprint- und Lesetests
         run: |
           sudo apt-get update
-          sudo apt-get install -y dotnet-sdk-10.0 libchromaprint-tools
+          sudo apt-get install -y dotnet-sdk-10.0 libchromaprint-tools ffmpeg
           dotnet --version
 
       - name: Client bauen und testen

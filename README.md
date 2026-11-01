@@ -139,6 +139,14 @@ Ein eindeutiger Treffer ab 90 % ohne Widerspruch zu den Tags ist *Erkannt*, alle
 Begründung unter *Prüfen*. Stimmt die Mehrheit der Dateien eines Ordners auf ein Release, bekommen alle
 dieses Release. Die Dateien in der Inbox werden dabei nicht verändert.
 
+**Schwierige Dateien:** Tags und Eigenschaften liest TagLib. Scheitert es (ein kaputter Bild-Frame im
+ID3-Tag, Nullbytes zwischen Tag und Ton, ein ID3-Tag vor einer WAV-Hülle, eine Endung, die nicht zum
+Inhalt passt), liest `ffprobe` die Datei, und beim Übernehmen verpackt `ffmpeg` sie ohne Neukodierung
+neu (Tags bleiben, eingebettete Bilder nicht; die Endung folgt dem Inhalt, ein „.wav“ mit MP3 darin
+wird „.mp3“). Das Original im Altbestand bleibt unberührt. Findet auch `ffprobe` keinen Ton, sagt der
+Fehler am Job, was stattdessen in der Datei steckt: nur Nullbytes, eine Webseite oder ein fremdes
+Format wie WMA. Pfade: `Tonregal:Metadata:FfprobePath`/`FfmpegPath`, sonst aus dem `PATH`.
+
 **Übernehmen:** Auf der Inbox-Seite lässt sich ein erkannter Treffer einzeln, pro Ordner oder für alle
 übernehmen; bei *Prüfen* wählt man zuerst in der Kandidatenliste das richtige Release. Tonregal schreibt
 dann Tags (MP3 als ID3v2.4, Feldnamen wie Picard) und Cover in eine Kopie, prüft sie, benennt sie atomar

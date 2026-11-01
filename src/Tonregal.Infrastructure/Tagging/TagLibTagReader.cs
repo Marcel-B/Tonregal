@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using Tonregal.Application.Abstractions;
 using Tonregal.Domain.Entities;
@@ -7,15 +8,21 @@ using File = TagLib.File;
 
 namespace Tonregal.Infrastructure.Tagging;
 
-/// <summary>Liest Tags und Audio-Eigenschaften mit TagLibSharp.</summary>
-public sealed class TagLibTagReader : ITagReader
+/// <summary>
+/// Liest Tags und Audio-Eigenschaften mit TagLibSharp. Scheitert TagLib (kaputter Bild-Frame,
+/// Nullbytes vor dem Ton, ID3-Tag vor einer WAV-Hülle), liest <paramref name="ffmpeg"/> die Datei;
+/// findet auch ffprobe keinen Ton, sagt die Meldung, was stattdessen in der Datei steckt.
+/// </summary>
+public sealed class TagLibTagReader(FfmpegAudio? ffmpeg = null) : ITagReader
 {
     public static readonly IReadOnlySet<string> SupportedExtensions =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav" };
 
     public AudioFileInfo Read(string path)
     {
-        using var file = Open(path);
+        if (!TryOpen(path, out var opened, out var error))
+            return ReadWithFfprobe(path, error);
+        using var file = opened;
         var tag = file.Tag;
 
         var tags = new AudioTags
@@ -48,9 +55,12 @@ public sealed class TagLibTagReader : ITagReader
         return new AudioFileInfo(tags, properties);
     }
 
+    /// <summary>Was TagLib nicht öffnet, hat für Tonregal kein Cover (meist ist gerade der Bild-Frame kaputt).</summary>
     public EmbeddedPicture? ReadCover(string path)
     {
-        using var file = Open(path);
+        if (!TryOpen(path, out var opened, out _))
+            return null;
+        using var file = opened;
         var pictures = file.Tag.Pictures;
         var picture = pictures.FirstOrDefault(p => p.Type == PictureType.FrontCover) ?? pictures.FirstOrDefault();
         return picture is null
@@ -60,21 +70,110 @@ public sealed class TagLibTagReader : ITagReader
 
     public string? ReadLyrics(string path)
     {
-        using var file = Open(path);
+        if (!TryOpen(path, out var opened, out _))
+            return null;
+        using var file = opened;
         return NullIfEmpty(file.Tag.Lyrics);
     }
 
-    private static File Open(string path)
+    /// <summary>Ob TagLib die Datei öffnet, also Tags in sie schreiben kann.</summary>
+    public static bool CanOpen(string path)
+    {
+        if (!TryOpen(path, out var file, out _))
+            return false;
+        file.Dispose();
+        return true;
+    }
+
+    private static bool TryOpen(string path, [NotNullWhen(true)] out File? file, [NotNullWhen(false)] out Exception? error)
     {
         try
         {
-            return File.Create(path, ReadStyle.Average);
+            file = File.Create(path, ReadStyle.Average);
+            error = null;
+            return true;
         }
         catch (Exception e) when (e is UnsupportedFormatException or CorruptFileException)
         {
-            throw new InvalidDataException($"{Path.GetFileName(path)}: {e.Message}", e);
+            file = null;
+            error = e;
+            return false;
         }
     }
+
+    private AudioFileInfo ReadWithFfprobe(string path, Exception error)
+    {
+        var name = Path.GetFileName(path);
+        ProbedAudio? probed;
+        try
+        {
+            probed = ffmpeg?.Probe(path);
+        }
+        catch (ExternalToolUnavailableException)
+        {
+            probed = null;
+        }
+
+        if (probed is null)
+            throw new InvalidDataException($"{name}: {error.Message} {Describe(path)}", error);
+        if (probed.Format == AudioFormat.Unknown)
+        {
+            throw new InvalidDataException(
+                $"{name}: Die Datei enthält {probed.Description}, das Tonregal nicht führt (nur MP3, FLAC, AAC, Apple Lossless, Ogg, Opus und WAV).",
+                error);
+        }
+
+        var t = probed.Tags;
+        var tags = new AudioTags
+        {
+            Title = Tag(t, "title"),
+            Artists = SplitArtists(Tag(t, "artist") is { } artist ? [artist] : []),
+            ArtistSort = Tag(t, "artist-sort", "artistsort", "TSOP"),
+            AlbumArtist = Tag(t, "album_artist", "albumartist"),
+            AlbumArtistSort = Tag(t, "album_artist-sort", "albumartistsort", "TSO2"),
+            Album = Tag(t, "album"),
+            Year = Tag(t, "date", "year", "TDRC", "TYER") is { Length: >= 4 } date && int.TryParse(date[..4], out var year) && year > 0 ? year : null,
+            Disc = Number(Tag(t, "disc", "discnumber", "TPOS"), 0),
+            DiscCount = Number(Tag(t, "disc", "discnumber", "TPOS"), 1) ?? Number(Tag(t, "disctotal", "totaldiscs"), 0),
+            Track = Number(Tag(t, "track", "tracknumber", "TRCK"), 0),
+            Genre = Tag(t, "genre"),
+            Bpm = ParseDouble(Tag(t, "TBPM", "bpm", "tmpo")),
+            InitialKey = Tag(t, "TKEY", "initialkey", "key"),
+            MusicBrainzRecordingId = ParseGuid(Tag(t, "musicbrainz_trackid", "MusicBrainz Track Id")),
+            MusicBrainzReleaseId = ParseGuid(Tag(t, "musicbrainz_albumid", "MusicBrainz Album Id")),
+            MusicBrainzArtistId = ParseGuid(Tag(t, "musicbrainz_artistid", "MusicBrainz Artist Id")),
+            AcoustId = ParseGuid(Tag(t, "acoustid_id", "Acoustid Id")),
+            ReplayGainTrackGain = ParseGain(Tag(t, "replaygain_track_gain")),
+            ReplayGainAlbumGain = ParseGain(Tag(t, "replaygain_album_gain")),
+            IsCompilation = Tag(t, "compilation", "TCMP", "cpil") is "1" or "true",
+        };
+        return new AudioFileInfo(tags, new AudioProperties(probed.Format, probed.Duration, probed.Bitrate, probed.SampleRate, probed.Channels));
+    }
+
+    private static string Describe(string path)
+    {
+        try
+        {
+            return AudioSniffer.Describe(path);
+        }
+        catch (IOException)
+        {
+            return "";
+        }
+    }
+
+    private static string? Tag(IReadOnlyDictionary<string, string> tags, params string[] names) =>
+        names.Select(n => tags.TryGetValue(n, out var value) ? NullIfEmpty(value) : null).FirstOrDefault(v => v is not null);
+
+    /// <summary>Teil <paramref name="part"/> von „3/12“.</summary>
+    private static int? Number(string? value, int part) =>
+        value?.Split('/') is { } parts && parts.Length > part && int.TryParse(parts[part].Trim(), out var n) && n > 0 ? n : null;
+
+    private static double? ParseGain(string? value) =>
+        value is null ? null
+            : double.TryParse(value.Replace("dB", "", StringComparison.OrdinalIgnoreCase).Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var gain)
+                ? gain
+                : null;
 
     /// <summary>
     /// Mehrere Artists stehen je nach Format als eigene Werte oder durch ";" getrennt in einem Wert.
