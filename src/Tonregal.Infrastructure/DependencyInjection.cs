@@ -87,7 +87,9 @@ public static class DependencyInjection
                 var contact = sp.GetRequiredService<IOptions<MetadataOptions>>().Value.Contact;
                 var version = typeof(DependencyInjection).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
                 client.BaseAddress = baseAddress;
-                client.Timeout = TimeSpan.FromSeconds(30);
+                // Je Anfrage begrenzt der RateLimitedHandler (ohne die Wartezeit am Tor); das hier
+                // ist nur die äußerste Grenze samt Warten in der Schlange.
+                client.Timeout = TimeSpan.FromMinutes(10);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd($"Tonregal/{version} ( {contact} )");
                 client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
             })

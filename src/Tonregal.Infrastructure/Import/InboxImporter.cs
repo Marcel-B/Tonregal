@@ -190,6 +190,9 @@ public sealed partial class InboxImporter(
             .Where(j => (j.Source == FileSource.Inbox || j.Source == FileSource.Legacy)
                 && (j.State == ImportState.New || j.State == ImportState.Fingerprinted))
             .OrderBy(j => j.Source == FileSource.Inbox ? 0 : 1)
+            // Was zuletzt scheiterte (z. B. MusicBrainz antwortete nicht), kommt ans Ende: Sonst
+            // hielte eine einzige Datei jeden Lauf an derselben Stelle an.
+            .ThenBy(j => j.Error != null)
             .ThenBy(j => j.Id)
             .FirstOrDefaultAsync(ct);
         if (job is null)
