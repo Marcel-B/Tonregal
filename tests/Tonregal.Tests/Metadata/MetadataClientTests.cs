@@ -243,6 +243,36 @@ public sealed class MetadataClientTests : IDisposable
     }
 
     [Fact]
+    public async Task MusicBrainz_ohne_Antwort_wird_wiederholt_und_als_nicht_erreichbar_gemeldet()
+    {
+        var hanging = new HangingHandler();
+        var gate = new RequestGate(TimeSpan.Zero, TimeProvider.System);
+        var http = new HttpClient(new RateLimitedHandler(gate, TimeSpan.FromMilliseconds(100)) { InnerHandler = hanging })
+        {
+            BaseAddress = MusicBrainzClient.BaseAddress,
+        };
+        var client = new MusicBrainzClient(http, _db, _options, new NoDelayTimeProvider());
+
+        var e = await Assert.ThrowsAsync<ExternalToolUnavailableException>(() => client.GetRecordingAsync(RecordingId, Ct));
+
+        Assert.Contains("keine Antwort", e.Message);
+        Assert.Equal(3, hanging.Calls);
+    }
+
+    /// <summary>Antwortet nie, wie ein Dienst, der hängt.</summary>
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Calls++;
+            await Task.Delay(Timeout.Infinite, ct);
+            throw new UnreachableException();
+        }
+    }
+
+    [Fact]
     public async Task RequestGate_haelt_Mindestabstand()
     {
         var gate = new RequestGate(TimeSpan.FromMilliseconds(200), TimeProvider.System);

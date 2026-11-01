@@ -30,12 +30,28 @@ public sealed class RequestGate(TimeSpan minimumInterval, TimeProvider time)
     }
 }
 
-/// <summary>Lässt jede Anfrage durch das <see cref="RequestGate"/> des Dienstes.</summary>
-public sealed class RateLimitedHandler(RequestGate gate) : DelegatingHandler
+/// <summary>
+/// Lässt jede Anfrage durch das <see cref="RequestGate"/> des Dienstes. Die Zeit für die Antwort
+/// zählt erst danach: Mit <c>HttpClient.Timeout</c> zählte auch das Warten am Tor, und bei
+/// vielen Anfragen in der Schlange lief so eine Anfrage ab, bevor sie überhaupt gesendet war.
+/// </summary>
+public sealed class RateLimitedHandler(RequestGate gate, TimeSpan? timeout = null) : DelegatingHandler
 {
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         await gate.WaitAsync(ct);
-        return await base.SendAsync(request, ct);
+        var limit = timeout ?? DefaultTimeout;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(limit);
+        try
+        {
+            return await base.SendAsync(request, cts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"keine Antwort nach {limit.TotalSeconds:0} s");
+        }
     }
 }
