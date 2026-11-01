@@ -23,7 +23,7 @@ public sealed class LibraryImporterTests : IDisposable
     private readonly TestLibrary _library = new(populate: false);
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
     private readonly TonregalDbContext _db;
-    private readonly TagLibTagReader _reader = new();
+    private readonly TagLibTagReader _reader = new(FfmpegFallbackTests.Ffmpeg);
     private readonly FakeCovers _covers = new();
     private ReleaseTrack _track = TagLibTagWriterTests.Track();
     private readonly Dictionary<Guid, ReleaseTrack> _otherReleases = [];
@@ -47,7 +47,7 @@ public sealed class LibraryImporterTests : IDisposable
     }
 
     private LibraryImporter Importer() => new(
-        _db, _reader, new TagLibTagWriter(), new FakeLookup(release => _otherReleases.GetValueOrDefault(release) ?? _track), _covers, new LibraryWriteLock(),
+        _db, _reader, new TagLibTagWriter(), FfmpegFallbackTests.Ffmpeg, new FakeLookup(release => _otherReleases.GetValueOrDefault(release) ?? _track), _covers, new LibraryWriteLock(),
         Microsoft.Extensions.Options.Options.Create(Options), TimeProvider.System, NullLogger<LibraryImporter>.Instance);
 
     private async Task<ImportJob> MatchedJobAsync(string testFile, string relativePath)
@@ -270,6 +270,41 @@ public sealed class LibraryImporterTests : IDisposable
         Assert.Equal(ImportState.Imported, result.State);
         var tags = _reader.Read(Path.Combine(_library.Library, result.LibraryPath!)).Tags;
         Assert.Equal(("Find A Way", "Billy Idol", "Not Released"), (tags.Title, tags.AlbumArtist, tags.Album));
+    }
+
+    [Fact]
+    public async Task Kaputter_Bild_Frame_wird_neu_verpackt_uebernommen_und_der_Altbestand_bleibt()
+    {
+        var legacy = Path.Combine(_library.MusicRoot, "Altbestand", "Diverse2");
+        Directory.CreateDirectory(legacy);
+        var source = Path.Combine(legacy, "Joan Baez - Where have all the flowers gone.mp3");
+        var original = FfmpegFallbackTests.BrokenPicture();
+        File.WriteAllBytes(source, original);
+        var job = new ImportJob { SourcePath = "Diverse2/Joan Baez - Where have all the flowers gone.mp3", Source = FileSource.Legacy, State = ImportState.NeedsReview };
+        _db.ImportJobs.Add(job);
+        await _db.SaveChangesAsync(Ct);
+
+        var result = await Importer().ImportUnmatchedAsync(job.Id, Ct);
+
+        Assert.Null(result.Error);
+        Assert.Equal("Joan Baez/Unbekanntes Album/Where have all the flowers gone.mp3", result.LibraryPath);
+        var imported = Path.Combine(_library.Library, result.LibraryPath!);
+        Assert.True(TagLibTagReader.CanOpen(imported));
+        Assert.Equal("Where have all the flowers gone", new TagLibTagReader().Read(imported).Tags.Title);
+        Assert.Equal(original, File.ReadAllBytes(source));
+    }
+
+    [Fact]
+    public async Task MP3_mit_Endung_wav_kommt_als_mp3_in_die_Library()
+    {
+        _library.Copy("song1.mp3", Path.Combine(Inbox, "Diverse2"), "zarathustra2.wav");
+        var job = await UnmatchedJobAsync("Diverse2/zarathustra2.wav");
+
+        var result = await Importer().ImportUnmatchedAsync(job.Id, Ct);
+
+        Assert.Null(result.Error);
+        Assert.EndsWith(".mp3", result.LibraryPath);
+        Assert.Equal(AudioFormat.Mp3, new TagLibTagReader().Read(Path.Combine(_library.Library, result.LibraryPath!)).Properties.Format);
     }
 
     private async Task<ImportJob> UnmatchedJobAsync(string sourcePath)

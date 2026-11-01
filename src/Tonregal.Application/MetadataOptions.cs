@@ -9,6 +9,15 @@ public sealed class MetadataOptions
     /// <summary>Pfad zu fpcalc (Chromaprint); ohne Pfad wird es im PATH gesucht.</summary>
     public string FpcalcPath { get; set; } = "fpcalc";
 
+    /// <summary>
+    /// Pfad zu ffprobe; liest Dateien, an denen TagLib scheitert (kaputter Bild-Frame, Nullbytes vor dem
+    /// Ton, falsche Endung). Ohne Pfad wird es im PATH gesucht.
+    /// </summary>
+    public string FfprobePath { get; set; } = "ffprobe";
+
+    /// <summary>Pfad zu ffmpeg; verpackt solche Dateien beim Übernehmen neu, ohne neu zu kodieren.</summary>
+    public string FfmpegPath { get; set; } = "ffmpeg";
+
     /// <summary>Client-Key von https://acoustid.org/new-application – gehört in appsettings.Production.json, nicht ins Repo.</summary>
     public string? AcoustIdApiKey { get; set; }
 

@@ -40,7 +40,7 @@ public interface ITagReader
     /// <exception cref="InvalidDataException">Datei ist kein lesbares Audioformat.</exception>
     AudioFileInfo Read(string path);
 
-    /// <summary>Eingebettetes Cover (Front-Cover bevorzugt) oder <c>null</c>.</summary>
+    /// <summary>Eingebettetes Cover (Front-Cover bevorzugt) oder <c>null</c>, auch für Dateien, die TagLib nicht öffnet.</summary>
     EmbeddedPicture? ReadCover(string path);
 
     /// <summary>Eingebetteter Songtext (ID3 USLT, Vorbis <c>LYRICS</c>, MP4 <c>©lyr</c>), roh, ggf. mit LRC-Zeitmarken.</summary>

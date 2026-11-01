@@ -34,6 +34,7 @@ public static class DependencyInjection
             o.UseSqlite(connectionString
                 ?? $"Data Source={sp.GetRequiredService<IOptions<TonregalOptions>>().Value.Database}"));
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<FfmpegAudio>();
         services.AddSingleton<ITagReader, TagLibTagReader>();
         services.AddSingleton<ITagWriter, TagLibTagWriter>();
         services.AddScoped<ILibraryScanner, LibraryScanner>();
