@@ -115,7 +115,7 @@ public sealed class TagLibTagReader(FfmpegAudio? ffmpeg = null) : ITagReader
         }
 
         if (probed is null)
-            throw new InvalidDataException($"{name}: {error.Message} {Describe(path)}", error);
+            throw new InvalidDataException($"{name}: {error.Message.TrimEnd('.')}. {Describe(path)}", error);
         if (probed.Format == AudioFormat.Unknown)
         {
             throw new InvalidDataException(

@@ -43,20 +43,23 @@ internal static class AudioSniffer
         }
 
         // Alte Sammlungen von beschädigten Platten: Die Datei zeigt auf Blöcke, die zu einer anderen
-        // gehörten. Dann steckt mitten darin Text (oft ein Stück Webseite) oder ungeordnete Daten.
+        // gehörten. Dann steckt darin ein Stück PDF (Objekte zwischen komprimierten Strömen, daher
+        // kein reiner Text), eine Webseite, sonstiger Text oder ungeordnete Daten.
+        const string Damage = "vermutlich nach einem Dateisystemschaden auf der alten Platte (die Datei zeigt auf Blöcke einer anderen). Der Ton ist nicht zu retten";
+        var text = Encoding.Latin1.GetString(sample);
+        if (PdfMarkers.Sum(m => Count(text, m)) >= 3)
+            return $"Die Datei enthält ein Stück einer PDF-Datei statt Ton, {Damage}; sie beginnt mit {Preview(head)}.";
+        var start = text.TrimStart();
+        if (start.StartsWith("<html", StringComparison.OrdinalIgnoreCase) || start.StartsWith("<!doctype", StringComparison.OrdinalIgnoreCase)
+            || (IsText(sample) && HtmlMarkers.Any(m => text.Contains(m, StringComparison.OrdinalIgnoreCase))))
+            return $"Die Datei enthält eine Webseite (HTML) oder ein Stück davon statt Ton, {Damage}; sie beginnt mit {Preview(head)}.";
         if (IsText(sample))
-        {
-            var text = Encoding.Latin1.GetString(sample);
-            return HtmlMarkers.Any(m => text.Contains(m, StringComparison.OrdinalIgnoreCase))
-                ? $"Die Datei enthält HTML (eine Webseite oder ein Stück davon) statt Ton; sie beginnt mit {Preview(head)}."
-                : $"Die Datei enthält Text statt Ton; sie beginnt mit {Preview(head)}.";
-        }
+            return $"Die Datei enthält Text statt Ton, {Damage}; sie beginnt mit {Preview(head)}.";
 
-        if (firstData == tag && sample.Length >= 4096 && Entropy(sample) > 7.5)
+        if (firstData == tag && sample.Length >= 4096)
         {
-            return "Die Datei enthält von Anfang an ungeordnete Daten ohne einen einzigen Audio-Kopf, also fremden Inhalt: "
-                + "vermutlich nach einem Dateisystemschaden auf der alten Platte (die Datei zeigt auf Blöcke einer anderen) "
-                + $"oder verschlüsselt. Der Ton ist darin nicht zu finden; sie beginnt mit {Preview(head)}.";
+            return $"Die Datei enthält von Anfang an fremde Daten ohne einen einzigen Audio-Kopf, {Damage}"
+                + $"{(Entropy(sample) > 7.5 ? " (oder sie ist verschlüsselt)" : "")}; sie beginnt mit {Preview(head)}.";
         }
 
         var zeros = firstData - tag;
@@ -67,6 +70,16 @@ internal static class AudioSniffer
     }
 
     private const int SampleLength = 1 << 16;
+
+    private static readonly string[] PdfMarkers = ["endobj", " 0 R", "/Length", "/Filter", "/FlateDecode", "endstream", "xref", "%PDF-"];
+
+    private static int Count(string text, string value)
+    {
+        var count = 0;
+        for (var i = text.IndexOf(value, StringComparison.Ordinal); i >= 0; i = text.IndexOf(value, i + value.Length, StringComparison.Ordinal))
+            count++;
+        return count;
+    }
 
     private static readonly string[] HtmlMarkers = ["<html", "<!doctype", "<body", "<img", "<a href", "<p>", "<br", "<table", "<div", "&nbsp;"];
 
