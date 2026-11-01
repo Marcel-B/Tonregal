@@ -161,6 +161,9 @@ public sealed class FfmpegFallbackTests : IDisposable
     {
         var noise = new byte[50_000];
         new Random(5).NextBytes(noise);
+        for (var i = 0; i < noise.Length; i++)
+            if (noise[i] == 0xFF)
+                noise[i] = 0xFE;
         var path = Write("Celine Dion.mp3", [.. Encoding.ASCII.GetBytes("<HTML>\r\n<HEAD>\r\n"), .. noise]);
 
         var e = Assert.Throws<InvalidDataException>(() => _reader.Read(path));
