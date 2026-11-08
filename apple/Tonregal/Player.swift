@@ -21,7 +21,7 @@ final class Player {
     private(set) var duration: Double = 0
     /// Warum das laufende Stück nicht spielt (Server weg, Datei fehlt), sonst nil.
     private(set) var problem: String?
-    /// Sterne je Datei-ID, wie Navidrome sie hält; fehlt eine, ist sie unbewertet oder noch nicht geladen.
+    /// Sterne je Datei-ID, wie Tonregal sie hält; fehlt eine, ist sie unbewertet oder noch nicht geladen.
     private(set) var ratings: [Int: Int] = [:]
     /// Warum die letzte Bewertung nicht ankam, sonst nil.
     var ratingProblem: String?

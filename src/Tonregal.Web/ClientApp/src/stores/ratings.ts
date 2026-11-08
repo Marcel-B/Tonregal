@@ -4,7 +4,7 @@ import { ref } from 'vue'
 import { api } from '@/api'
 
 /**
- * Sterne je Datei, wie Navidrome sie hält. Player-Leiste und Albumansicht teilen sich den Stand, damit eine Bewertung
+ * Sterne je Datei, wie Tonregal sie hält. Player-Leiste und Albumansicht teilen sich den Stand, damit eine Bewertung
  * an beiden Stellen gleich erscheint. Unbekannt und unbewertet sind beide 0.
  */
 export const useRatingsStore = defineStore('ratings', () => {
@@ -22,7 +22,7 @@ export const useRatingsStore = defineStore('ratings', () => {
     }
   }
 
-  /** Sofort anzeigen, bei einer Absage von Navidrome zurücknehmen. */
+  /** Sofort anzeigen, bei einer Absage des Servers zurücknehmen. */
   async function rate(fileId: number, rating: number) {
     const before = byFile.value[fileId] ?? 0
     byFile.value = { ...byFile.value, [fileId]: rating }

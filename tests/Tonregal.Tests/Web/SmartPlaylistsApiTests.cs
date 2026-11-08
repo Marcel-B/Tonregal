@@ -222,24 +222,14 @@ public sealed class SmartPlaylistsApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Bewertung_als_Regel_auch_ohne_Navidromes_Auswertung()
+    public async Task Bewertung_als_Regel_aus_Tonregals_Bewertungen()
     {
-        var client = Client(navidrome: true);
+        var client = Client(navidrome: false);
         await AnalyzedAsync();
         var files = await FilesAsync();
-        // Navidrome kennt die Playlist noch nicht, aber die Bewertungen: 5 und 3 Sterne.
-        CreateNavidromeDatabase(Path.Combine(_library.Library, "Playlists", "andere.nsp"), ("nd-a", files[0].Path), ("nd-b", files[1].Path));
-        await using (var connection = new SqliteConnection($"Data Source={Path.Combine(_library.MusicRoot, "navidrome", "navidrome.db")};Pooling=False"))
-        {
-            connection.Open();
-            await using var command = connection.CreateCommand();
-            command.CommandText = """
-                CREATE TABLE "user" (id TEXT PRIMARY KEY, user_name TEXT); INSERT INTO "user" VALUES ('u-1', 'marcel');
-                CREATE TABLE annotation (user_id TEXT, item_id TEXT, item_type TEXT, rating INTEGER);
-                INSERT INTO annotation VALUES ('u-1', 'nd-a', 'media_file', 5), ('u-1', 'nd-b', 'media_file', 3);
-                """;
-            command.ExecuteNonQuery();
-        }
+        // Bewertet in Tonregal, Navidrome kennt weder Liste noch Bewertungen.
+        await client.PutAsJsonAsync($"/api/player/files/{files[0].Id}/rating", new { rating = 5 }, Ct);
+        await client.PutAsJsonAsync($"/api/player/files/{files[1].Id}/rating", new { rating = 3 }, Ct);
 
         var response = await client.PostAsJsonAsync("/api/smart-playlists", Input("Lieblinge", minRating: 4), Json, Ct);
         var created = (await response.Content.ReadFromJsonAsync<SmartPlaylistInfo>(Json, Ct))!;
@@ -247,6 +237,7 @@ public sealed class SmartPlaylistsApiTests : IDisposable
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.Equal(4, created.MinRating);
+        Assert.Equal(1, created.Matching);
         Assert.Equal("[4,5]", Nsp(Path.Combine(_library.Library, created.Path))["all"]![0]!["inTheRange"]!["rating"]!.ToJsonString());
         Assert.False(tracks!.FromNavidrome);
         Assert.Equal([files[0].Id], tracks.Items.Select(i => i.FileId));

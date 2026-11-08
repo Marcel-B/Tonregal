@@ -48,14 +48,14 @@ public struct TonregalClient: Sendable {
         try check(data, response)
     }
 
-    /// Sterne je Datei-ID aus Navidrome; unbewertete fehlen.
+    /// Sterne je Datei-ID, wie Tonregal sie hält; unbewertete fehlen.
     public func ratings(files ids: [Int]) async throws -> [Int: Int] {
         guard !ids.isEmpty else { return [:] }
         let answer: [String: Int] = try await get("api/player/ratings?" + ids.map { "files=\($0)" }.joined(separator: "&"))
         return Dictionary(uniqueKeysWithValues: answer.compactMap { key, value in Int(key).map { ($0, value) } })
     }
 
-    /// 0 nimmt die Bewertung zurück. Navidrome muss die Datei schon kennen (Scan alle 15 Minuten).
+    /// 0 nimmt die Bewertung zurück. Gilt sofort, auch für Dateien, die Navidrome noch nicht gescannt hat.
     public func rate(file id: Int, rating: Int) async throws {
         var request = URLRequest(url: url("api/player/files/\(id)/rating"))
         request.httpMethod = "PUT"

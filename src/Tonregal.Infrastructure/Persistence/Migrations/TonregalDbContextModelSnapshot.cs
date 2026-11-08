@@ -528,6 +528,15 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.Property<int>("Number")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long?>("RatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Rating")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("RatingPending")
+                        .HasColumnType("INTEGER");
+
                     b.Property<double?>("ReplayGainTrack")
                         .HasColumnType("REAL");
 
@@ -541,6 +550,8 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.HasIndex("AcoustId");
 
                     b.HasIndex("MusicBrainzRecordingId");
+
+                    b.HasIndex("RatingPending");
 
                     b.HasIndex("AlbumId", "Disc", "Number");
 

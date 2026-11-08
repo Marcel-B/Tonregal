@@ -161,6 +161,15 @@ public sealed class LibraryScanner(
         if (track.Id == 0 && !album.Tracks.Contains(track))
             album.Tracks.Add(track);
 
+        // Neue Tags (anderes Album, anderer Titel) hängen die Datei an einen anderen Track; die Bewertung kommt mit,
+        // sonst verschwände sie mit dem verwaisten Track.
+        if (file.Track is { RatedAt: not null } previous && previous != track && track.RatedAt is null)
+        {
+            track.Rating = previous.Rating;
+            track.RatedAt = previous.RatedAt;
+            track.RatingPending = true;
+        }
+
         track.Title = title;
         track.Disc = disc;
         track.Number = number;

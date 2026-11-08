@@ -6,7 +6,8 @@ namespace Tonregal.Infrastructure.Persistence;
 
 /// <summary>
 /// Index über die Library. Bis auf <see cref="ImportJobs"/>, <see cref="DuplicateGroups"/>,
-/// <see cref="BackupRuns"/> und <see cref="IngestKeys"/> lässt sich alles aus den Tags der Dateien neu aufbauen.
+/// <see cref="BackupRuns"/>, <see cref="IngestKeys"/> und den Bewertungen an <see cref="Track"/> lässt sich alles aus den
+/// Tags der Dateien neu aufbauen.
 /// </summary>
 public class TonregalDbContext(DbContextOptions<TonregalDbContext> options) : DbContext(options)
 {

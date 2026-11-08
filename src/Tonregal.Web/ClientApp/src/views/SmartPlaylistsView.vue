@@ -172,7 +172,8 @@ const sortLabel = (sort: SmartPlaylistSort) => sorts.find((s) => s.value === sor
     <p class="m-0 text-surface-500">
       Eine Smart Playlist ist eine Regel, keine feste Liste: „Abspielen“ holt jedes Mal die Stücke, die gerade passen, und spielt sie
       im Player unten. Ausgewertet wird in Navidrome, das die Regeln als <code>.nsp</code>-Datei aus <code>Library/Playlists</code>
-      liest; kennt es eine Liste noch nicht, wählt Tonregal selbst aus. „Nie gehört“ zählt in der Anzahl hier nicht mit.
+      liest; kennt es eine Liste noch nicht, wählt Tonregal selbst aus. Bewertungen hält Tonregal und reicht sie an Navidrome
+      weiter. „Nie gehört“ zählt in der Anzahl hier nicht mit.
     </p>
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
@@ -267,7 +268,7 @@ const sortLabel = (sort: SmartPlaylistSort) => sorts.find((s) => s.value === sor
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span>{{ p.name }}</span>
           <span class="text-sm font-normal text-surface-500" data-testid="matching">
-            {{ p.neverPlayed || p.minRating !== null ? 'höchstens ' : '' }}{{ p.matching }} Stück{{ p.matching === 1 ? '' : 'e' }}
+            {{ p.neverPlayed ? 'höchstens ' : '' }}{{ p.matching }} Stück{{ p.matching === 1 ? '' : 'e' }}
           </span>
         </div>
       </template>

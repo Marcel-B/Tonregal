@@ -197,7 +197,7 @@ public sealed class SmartPlaylists(
         return p.Limit is { } limit ? Math.Min(count, limit) : count;
     }
 
-    /// <summary>Alle Regeln außer „nie gehört“ und der Bewertung, die in Navidrome liegen.</summary>
+    /// <summary>Alle Regeln außer „nie gehört“, das nur Navidrome weiß.</summary>
     private IQueryable<Track> Filtered(SmartPlaylist p)
     {
         var tracks = db.Tracks.Where(t => t.Files.Any());
@@ -224,6 +224,9 @@ public sealed class SmartPlaylists(
             var since = time.GetUtcNow().AddDays(-days);
             tracks = tracks.Where(t => t.Files.Any(f => f.AddedAt >= since));
         }
+
+        if (p.MinRating is { } stars)
+            tracks = tracks.Where(t => t.Rating >= stars);
 
         return tracks;
     }
@@ -252,12 +255,6 @@ public sealed class SmartPlaylists(
             .Include(t => t.Files)
             .AsNoTracking()
             .ToListAsync(ct);
-        if (playlist.MinRating is { } stars)
-        {
-            var ratings = await navidrome.RatingsAsync([.. tracks.SelectMany(t => t.Files).Select(f => f.Path)], ct);
-            tracks = [.. tracks.Where(t => t.Files.Any(f => ratings.TryGetValue(f.Path, out var r) && r >= stars))];
-        }
-
         IEnumerable<Track> ordered = playlist.Sort switch
         {
             SmartPlaylistSort.Newest => tracks.OrderByDescending(t => t.Files.Min(f => f.AddedAt)),

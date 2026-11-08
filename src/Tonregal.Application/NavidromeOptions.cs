@@ -17,5 +17,11 @@ public sealed class NavidromeOptions
     /// <summary>navidrome.db, um Dateien den Navidrome-IDs zuzuordnen; leer = <c>{MusicRoot}/navidrome/navidrome.db</c>.</summary>
     public string Database { get; set; } = "";
 
+    /// <summary>
+    /// Alle so viele Minuten Bewertungen mit Navidrome abgleichen (alte übernehmen, offene nachreichen); 0 = nie. Navidrome
+    /// scannt alle 15 Minuten, früher kennt es neue Stücke ohnehin nicht.
+    /// </summary>
+    public int RatingSyncMinutes { get; set; } = 15;
+
     public bool Configured => Url.Length > 0 && User.Length > 0 && Password.Length > 0;
 }
