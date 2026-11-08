@@ -377,6 +377,24 @@ export interface PlaylistItem {
   durationMs: number
 }
 
+export interface AlbumListItem {
+  id: number
+  title: string
+  year: number | null
+  kind: AlbumKind
+  trackCount: number
+  albumArtist: { id: number; name: string }
+}
+
+/** trackCount zählt alle passenden Titel, tracks hält höchstens 100 davon. */
+export interface LibrarySearchResult {
+  query: string
+  artists: ArtistSummary[]
+  albums: AlbumListItem[]
+  tracks: PlaylistItem[]
+  trackCount: number
+}
+
 export interface SmartPlaylistTracks {
   /** false: Navidrome kannte die Liste nicht, Tonregal hat ohne „nie gehört“ ausgewählt. */
   fromNavidrome: boolean
@@ -425,6 +443,8 @@ export const api = {
   artists: () => get<ArtistSummary[]>('/library/artists'),
   artist: (id: number) => get<ArtistDetail>(`/library/artists/${id}`),
   album: (id: number) => get<AlbumDetail>(`/library/albums/${id}`),
+  /** Interpreten, Alben und Titel; jedes Wort muss vorkommen, Akzente und Großschreibung zählen nicht. */
+  search: (query: string) => get<LibrarySearchResult>(`/library/search?q=${encodeURIComponent(query)}`),
   coverUrl: (albumId: number) => `/api/library/albums/${albumId}/cover`,
   scanStatus: () => get<ScanStatus>('/library/scan'),
   startScan: () => request<ScanStatus>('POST', '/library/scan'),

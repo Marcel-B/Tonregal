@@ -31,6 +31,24 @@ final class ModelTests: XCTestCase {
         XCTAssertNil(albums.first?.year)
     }
 
+    func testSearchResultDecodes() throws {
+        let json = """
+        {"query":"one","artists":[{"id":2,"name":"Daft Punk","sortName":"Daft Punk","albumCount":1}],
+         "albums":[{"id":7,"title":"Discovery","year":2001,"kind":"Album","trackCount":14,"albumArtist":{"id":2,"name":"Daft Punk"}}],
+         "tracks":[{"fileId":70,"trackId":7,"title":"One More Time","artist":"Daft Punk","album":"Discovery","albumId":7,"durationMs":320000}],
+         "trackCount":1}
+        """
+        let result = try JSONDecoder().decode(LibrarySearchResult.self, from: Data(json.utf8))
+        XCTAssertEqual(result.tracks.first?.fileId, 70)
+        XCTAssertEqual(result.albums.first?.albumArtist.name, "Daft Punk")
+        XCTAssertFalse(result.isEmpty)
+    }
+
+    func testSearchQueryIsEncoded() {
+        XCTAssertEqual(TonregalClient.queryValue("Simon & Garfunkel"), "Simon%20%26%20Garfunkel")
+        XCTAssertEqual(TonregalClient.queryValue("Beyoncé+1"), "Beyonc%C3%A9%2B1")
+    }
+
     func testDuration() {
         XCTAssertEqual(Duration.format(seconds: 187.9), "3:07")
         XCTAssertEqual(Duration.format(seconds: 3723), "1:02:03")

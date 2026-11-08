@@ -279,6 +279,13 @@ Alben) und in der Bibliothek *Alles zufällig* bis zu 2000 Stücke (`GET /api/pl
 mischt *Rest mischen* (auch im großen Player), was nach dem laufenden Stück kommt; Einträge lassen sich am Griff ziehen
 oder mit den Pfeiltasten verschieben, schon Gespieltes steht blass. Der Wiederholen-Knopf schaltet aus → alle → dieses Stück.
 
+**Suche:** Das Suchfeld der Bibliothek (in der iPhone-App der Tab *Suche*) findet Titel, Alben und Interpreten
+zugleich (`GET /api/library/search?q=`). Jedes Wort muss vorkommen, bei Titeln irgendwo in Titel, Interpreten oder
+Album, also findet „beatles help“ *Help!*. Groß- und Kleinschreibung, Akzente und Satzzeichen zählen nicht („beyonce“,
+„acdc“, „arzte“); verglichen wird deshalb im Speicher statt mit SQLite-`LIKE`, das Umlaute nicht faltet. Genau so
+heißende Treffer stehen vorn, dann solche, die so anfangen. Höchstens 10 Interpreten, 20 Alben und 100 Titel, die Zahl
+aller passenden Titel steht dabei. Ein Klick auf einen Titel spielt ihn und danach die übrigen Treffer.
+
 **Smart Playlists:** Auf der Seite *Smart Playlists* legt man Regeln an (BPM-Bereich, Tonarten mit
 „+ passende“ für Quinte hoch/runter und Paralleltonart, Genre, neu seit n Tagen, nie gehört, mindestens n Sterne, Sortierung,
 Höchstzahl). Tonregal schreibt sie als `Library/Playlists/tonregal-{id}.nsp`; Navidrome liest sie beim
