@@ -415,6 +415,56 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.ToTable("MetadataCache", (string)null);
                 });
 
+            modelBuilder.Entity("Tonregal.Domain.Entities.Playlist", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Playlists");
+                });
+
+            modelBuilder.Entity("Tonregal.Domain.Entities.PlaylistEntry", b =>
+                {
+                    b.Property<int>("PlaylistId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TrackId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AddedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("PlaylistId", "TrackId");
+
+                    b.HasIndex("TrackId");
+
+                    b.ToTable("PlaylistEntries");
+                });
+
             modelBuilder.Entity("Tonregal.Domain.Entities.SmartPlaylist", b =>
                 {
                     b.Property<int>("Id")
@@ -668,6 +718,25 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
                     b.Navigation("AudioFile");
                 });
 
+            modelBuilder.Entity("Tonregal.Domain.Entities.PlaylistEntry", b =>
+                {
+                    b.HasOne("Tonregal.Domain.Entities.Playlist", "Playlist")
+                        .WithMany("Entries")
+                        .HasForeignKey("PlaylistId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Tonregal.Domain.Entities.Track", "Track")
+                        .WithMany()
+                        .HasForeignKey("TrackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Playlist");
+
+                    b.Navigation("Track");
+                });
+
             modelBuilder.Entity("Tonregal.Domain.Entities.Track", b =>
                 {
                     b.HasOne("Tonregal.Domain.Entities.Album", "Album")
@@ -718,6 +787,11 @@ namespace Tonregal.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Tonregal.Domain.Entities.AudioFile", b =>
                 {
                     b.Navigation("AnalysisResults");
+                });
+
+            modelBuilder.Entity("Tonregal.Domain.Entities.Playlist", b =>
+                {
+                    b.Navigation("Entries");
                 });
 
             modelBuilder.Entity("Tonregal.Domain.Entities.Track", b =>

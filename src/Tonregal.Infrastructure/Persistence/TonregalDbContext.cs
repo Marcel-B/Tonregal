@@ -6,8 +6,9 @@ namespace Tonregal.Infrastructure.Persistence;
 
 /// <summary>
 /// Index über die Library. Bis auf <see cref="ImportJobs"/>, <see cref="DuplicateGroups"/>,
-/// <see cref="BackupRuns"/>, <see cref="IngestKeys"/> und den Bewertungen an <see cref="Track"/> lässt sich alles aus den
-/// Tags der Dateien neu aufbauen.
+/// <see cref="BackupRuns"/>, <see cref="IngestKeys"/>, den Bewertungen an <see cref="Track"/> und den eigenen
+/// <see cref="Playlists"/> (von denen nur eine Kopie als <c>.m3u8</c> in der Library liegt) lässt sich alles aus den Tags
+/// der Dateien neu aufbauen.
 /// </summary>
 public class TonregalDbContext(DbContextOptions<TonregalDbContext> options) : DbContext(options)
 {
@@ -22,6 +23,8 @@ public class TonregalDbContext(DbContextOptions<TonregalDbContext> options) : Db
     public DbSet<MetadataCacheEntry> MetadataCache => Set<MetadataCacheEntry>();
     public DbSet<IngestKey> IngestKeys => Set<IngestKey>();
     public DbSet<SmartPlaylist> SmartPlaylists => Set<SmartPlaylist>();
+    public DbSet<Playlist> Playlists => Set<Playlist>();
+    public DbSet<PlaylistEntry> PlaylistEntries => Set<PlaylistEntry>();
     public DbSet<TrackLyrics> Lyrics => Set<TrackLyrics>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>

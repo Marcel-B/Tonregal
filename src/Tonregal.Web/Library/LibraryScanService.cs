@@ -54,6 +54,8 @@ public sealed class LibraryScanService(
             var duplicates = scope.ServiceProvider.GetRequiredService<IDuplicateService>();
             await duplicates.DetectAsync(ct);
             duplicates.PurgeTrash();
+            // Pfade können sich geändert haben, und ganz verschwundene Stücke sind aus den Playlists gefallen.
+            await scope.ServiceProvider.GetRequiredService<IPlaylists>().WriteFilesAsync(ct);
             TonregalMetrics.ScanRuns.WithLabels("success").Inc();
             TonregalMetrics.ScanDuration.Observe(Stopwatch.GetElapsedTime(started).TotalSeconds);
             await PublishAsync(new ScanStatus(false, null, time.GetUtcNow(), result, null), ct);

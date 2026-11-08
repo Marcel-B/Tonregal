@@ -76,6 +76,14 @@ await using (var scope = app.Services.CreateAsyncScope())
     {
         app.Logger.LogWarning("Smart Playlists nicht geschrieben: {Message}", e.Message);
     }
+    try
+    {
+        await scope.ServiceProvider.GetRequiredService<IPlaylists>().WriteFilesAsync(CancellationToken.None);
+    }
+    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+    {
+        app.Logger.LogWarning("Playlists nicht geschrieben: {Message}", e.Message);
+    }
     app.Logger.LogInformation("Tonregal gestartet, Library {Library}, Datenbank {Database}", options.Library, db.Database.GetDbConnection().DataSource);
     app.Logger.LogInformation("Monitoring: /metrics {Metrics}, Logs an Loki {Loki}",
         metrics ? "an" : "aus", string.IsNullOrEmpty(app.Configuration[MonitoringSetup.LokiUrlKey]) ? "aus" : app.Configuration[MonitoringSetup.LokiUrlKey]);
@@ -95,7 +103,7 @@ app.UseExceptionHandler();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi().MapIngestApi().MapSettingsApi().MapSmartPlaylistsApi().MapListeningApi();
+app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi().MapIngestApi().MapSettingsApi().MapSmartPlaylistsApi().MapPlaylistsApi().MapListeningApi();
 app.MapHub<StatusHub>("/hub");
 if (metrics)
     app.MapMetrics();

@@ -34,6 +34,9 @@ public sealed class LibraryScanner(
     private readonly Dictionary<(int ArtistId, string Title), Album> _albums = [];
     private readonly Dictionary<(Artist Artist, string Title), Album> _newAlbums = [];
 
+    /// <summary>Track, an dem eine Datei vorher hing, und der, an dem sie jetzt hängt (z. B. nach einem neuen Albumtitel).</summary>
+    private readonly Dictionary<Track, Track> _successors = [];
+
     public async Task<ScanResult> ScanAsync(IProgress<ScanProgress>? progress, CancellationToken ct)
     {
         var o = options.Value;
@@ -118,7 +121,8 @@ public sealed class LibraryScanner(
         var removed = existing.Values.Where(f => !seen.Contains(f.Path)).ToList();
         db.AudioFiles.RemoveRange(removed);
         await db.SaveChangesAsync(ct);
-        await RemoveOrphansAsync(db, ct);
+        await RemoveOrphansAsync(db, ct, _successors.Where(s => s.Key.Id != 0 && s.Value.Id != 0)
+            .ToDictionary(s => s.Key.Id, s => s.Value.Id));
         progress?.Report(new ScanProgress(processed, paths.Count, null));
 
         var result = new ScanResult(added, updated, removed.Count, unchanged, errors, stopwatch.Elapsed);
@@ -184,6 +188,8 @@ public sealed class LibraryScanner(
             track.Artists.Add(artist);
         track.Artists.RemoveAll(a => !trackArtists.Contains(a));
 
+        if (file.Track is { } former && former != track)
+            _successors[former] = track;
         file.Track = track;
         file.Format = props.Format;
         file.Bitrate = props.Bitrate;
@@ -226,12 +232,38 @@ public sealed class LibraryScanner(
         return album;
     }
 
-    /// <summary>Entfernt Tracks ohne Dateien, Alben ohne Tracks und Artists ohne Alben und Tracks.</summary>
-    internal static async Task RemoveOrphansAsync(TonregalDbContext db, CancellationToken ct)
+    /// <summary>
+    /// Entfernt Tracks ohne Dateien, Alben ohne Tracks und Artists ohne Alben und Tracks. Steht ein solcher Track in
+    /// einer eigenen Playlist, rückt vorher sein Nachfolger an seine Stelle: der Track, an den der Scan seine Datei
+    /// gehängt hat (<paramref name="successors"/>), sonst einer mit derselben MusicBrainz-Aufnahme.
+    /// </summary>
+    internal static async Task RemoveOrphansAsync(TonregalDbContext db, CancellationToken ct, IReadOnlyDictionary<int, int>? successors = null)
     {
+        await KeepPlaylistEntriesAsync(db, successors ?? new Dictionary<int, int>(), ct);
         await db.Tracks.Where(t => !t.Files.Any()).ExecuteDeleteAsync(ct);
         await db.Albums.Where(a => !a.Tracks.Any()).ExecuteDeleteAsync(ct);
         await db.Artists.Where(a => !a.Albums.Any() && !a.Tracks.Any()).ExecuteDeleteAsync(ct);
+    }
+
+    private static async Task KeepPlaylistEntriesAsync(TonregalDbContext db, IReadOnlyDictionary<int, int> successors, CancellationToken ct)
+    {
+        var orphans = await db.PlaylistEntries
+            .Where(e => !e.Track.Files.Any())
+            .Select(e => new { e.TrackId, e.Track.MusicBrainzRecordingId })
+            .Distinct()
+            .ToListAsync(ct);
+        foreach (var orphan in orphans)
+        {
+            var successor = successors.TryGetValue(orphan.TrackId, out var next) ? next
+                : orphan.MusicBrainzRecordingId is { } recording
+                    ? await db.Tracks.Where(t => t.MusicBrainzRecordingId == recording && t.Files.Any()).Select(t => (int?)t.Id).FirstOrDefaultAsync(ct) ?? 0
+                    : 0;
+            if (successor == 0)
+                continue;
+            // Steht der Nachfolger schon in derselben Playlist, bleibt der alte Eintrag stehen und fällt mit dem Track weg.
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE OR IGNORE PlaylistEntries SET TrackId = {successor} WHERE TrackId = {orphan.TrackId}", ct);
+        }
     }
 
     internal static IEnumerable<string> EnumerateAudioFiles(string root)

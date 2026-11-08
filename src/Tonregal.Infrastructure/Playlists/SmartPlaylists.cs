@@ -264,7 +264,7 @@ public sealed class SmartPlaylists(
             _ => tracks.OrderBy(_ => Random.Shared.Next()),
         };
         var fallback = ordered.Take(playlist.Limit ?? MaxFallbackTracks)
-            .Select(t => Item(t.Files.OrderByDescending(f => f.Format == AudioFormat.Flac).ThenByDescending(f => f.Bitrate).First()))
+            .Select(t => Item(PreferredFile(t)))
             .ToList();
         return new SmartPlaylistTracks(false, fallback);
     }
@@ -272,10 +272,14 @@ public sealed class SmartPlaylists(
     /// <summary>Obergrenze, wenn Tonregal ohne Höchstzahl selbst auswertet; mehr braucht keine Warteschlange.</summary>
     private const int MaxFallbackTracks = 1000;
 
-    private static string ArtistName(Track t) =>
+    /// <summary>Die Datei, die der Player für einen Track nimmt: FLAC zuerst, dann die höchste Bitrate.</summary>
+    internal static AudioFile PreferredFile(Track t) =>
+        t.Files.OrderByDescending(f => f.Format == AudioFormat.Flac).ThenByDescending(f => f.Bitrate).First();
+
+    internal static string ArtistName(Track t) =>
         t.Artists.Count > 0 ? string.Join(", ", t.Artists.Select(a => a.Name)) : t.Album.AlbumArtist.Name;
 
-    private static PlaylistItem Item(AudioFile f) =>
+    internal static PlaylistItem Item(AudioFile f) =>
         new(f.Id, f.TrackId, f.Track.Title, ArtistName(f.Track), f.Track.Album.Title, f.Track.AlbumId, f.Track.DurationMs);
 
     private async Task ApplyAsync(SmartPlaylist playlist, SmartPlaylistInput input, CancellationToken ct)
