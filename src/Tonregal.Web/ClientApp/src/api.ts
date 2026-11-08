@@ -401,6 +401,30 @@ export interface SmartPlaylistTracks {
   items: PlaylistItem[]
 }
 
+/** Eine eigene Playlist mit festen Stücken. */
+export interface PlaylistSummary {
+  id: number
+  name: string
+  comment: string | null
+  trackCount: number
+  durationMs: number
+  updatedAt: string
+  /** Bis zu vier verschiedene Alben der ersten Stücke, fürs Cover-Mosaik. */
+  albumIds: number[]
+}
+
+export interface PlaylistDetail {
+  playlist: PlaylistSummary
+  items: PlaylistItem[]
+}
+
+export interface PlaylistAddResult {
+  added: number
+  /** Stücke, die schon darin standen. */
+  skipped: number
+  playlist: PlaylistSummary
+}
+
 export interface KeyCount {
   key: string
   tracks: number
@@ -495,6 +519,16 @@ export const api = {
   createSmartPlaylist: (input: SmartPlaylistInput) => request<SmartPlaylist>('POST', '/smart-playlists', input),
   updateSmartPlaylist: (id: number, input: SmartPlaylistInput) => request<SmartPlaylist>('PUT', `/smart-playlists/${id}`, input),
   deleteSmartPlaylist: (id: number) => request<void>('DELETE', `/smart-playlists/${id}`),
+  playlists: () => get<PlaylistSummary[]>('/playlists'),
+  playlist: (id: number) => get<PlaylistDetail>(`/playlists/${id}`),
+  createPlaylist: (name: string, comment: string | null = null) => request<PlaylistSummary>('POST', '/playlists', { name, comment }),
+  updatePlaylist: (id: number, name: string, comment: string | null) => request<PlaylistSummary>('PUT', `/playlists/${id}`, { name, comment }),
+  deletePlaylist: (id: number) => request<void>('DELETE', `/playlists/${id}`),
+  /** Hinten anhängen; was schon darin steht, zählt als übersprungen. */
+  addToPlaylist: (id: number, trackIds: number[]) => request<PlaylistAddResult>('POST', `/playlists/${id}/tracks`, { trackIds }),
+  /** Alle Stücke in neuer Reihenfolge; fehlende fliegen heraus. */
+  setPlaylistTracks: (id: number, trackIds: number[]) => request<PlaylistDetail>('PUT', `/playlists/${id}/tracks`, { trackIds }),
+  removeFromPlaylist: (id: number, trackId: number) => request<void>('DELETE', `/playlists/${id}/tracks/${trackId}`),
   backup: () => get<BackupResponse>('/backup'),
   runBackup: () => request<BackupStatus>('POST', '/backup/run'),
   cancelBackup: () => request<BackupStatus>('POST', '/backup/cancel'),
