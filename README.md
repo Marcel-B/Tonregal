@@ -304,6 +304,21 @@ Navidrome, die sonst stehen bliebe. „Neu (30 Tage)“ und „Nie gehört“ si
 auswertet) und legt sie in den Player; kennt Navidrome die Liste noch nicht, wählt Tonregal selbst aus, dann
 ohne „nie gehört“ (die Sterne liest es dafür aus `navidrome.db`).
 
+**Eigene Playlists:** Auf der Seite *Playlists* (und im Tab *Playlists* der iPhone-App) stehen feste Listen, die man
+selbst füllt: über das Lesezeichen „Zur Playlist“ am Album (alle Stücke), an jedem Stück, im großen Player und in der
+Warteschlange (*Als Playlist*, die ganze Schlange). Ein Stück steht höchstens einmal in einer Liste, doppelt Gewähltes
+wird übersprungen und gemeldet. Auf der Seite einer Playlist lassen sich die Stücke am Griff ziehen oder mit den
+Pfeiltasten verschieben (in der App: Bearbeiten), entfernen, abspielen, zufällig abspielen und anhängen; Name und
+Beschreibung ändert *Bearbeiten*. Gespeichert wird in der Datenbank, je Track (nicht je Datei), damit eine bessere
+Datei desselben Songs die Liste nicht ändert; abgespielt wird die bevorzugte Datei (FLAC zuerst). Zusätzlich schreibt
+Tonregal jede Liste als `Library/Playlists/tonregal-liste-{id}.m3u8` (Pfade relativ, `#EXTINF` mit Interpret und
+Titel), nach jeder Änderung, beim Start und nach jedem Library-Scan; so liegt sie mit in der Sicherung, und Navidrome
+oder ein anderer Player kann sie lesen. Hängt der Scan die Datei eines Stücks an einen neuen Track (etwa nach einem
+geänderten Albumtitel) oder gibt es einen anderen Track derselben MusicBrainz-Aufnahme, rückt dieser in der Playlist
+an die Stelle des alten; verschwindet ein Stück ganz aus der Library, fällt es heraus. API unter `/api/playlists`
+(`GET`, `POST`, `PUT /{id}`, `DELETE /{id}`, `POST /{id}/tracks` anhängen, `PUT /{id}/tracks` neue Reihenfolge,
+`DELETE /{id}/tracks/{trackId}`).
+
 Am iPhone in Safari *Teilen → Zum Home-Bildschirm* wählen, dann startet Tonregal wie eine App.
 
 Beide Dienste laufen nur, solange die T7 gemountet ist (`KeepAlive`/`PathState` auf

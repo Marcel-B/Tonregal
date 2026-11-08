@@ -10,8 +10,9 @@ Zufällig, „Als Nächstes“ / „Hinten anhängen“ (Wischen oder langes Dr�
 die über App-Neustarts erhalten bleibt, Scrobble an Navidrome nach der Hälfte bzw. 4 Minuten, Songtext im großen Player
 (Sprechblase unten; synchronisierte Texte laufen mit, Tippen springt), Sterne im großen Player und im Kontextmenü eines
 Titels (gespeichert in Navidrome), Zufällig für Album, Interpret und die ganze Bibliothek, Rest mischen und Wiederholen
-(aus, alle, dieses Stück; auch über den Sperrbildschirm). Noch nicht: Offline-Cache,
-CarPlay, Playlists.
+(aus, alle, dieses Stück; auch über den Sperrbildschirm), eigene Playlists (Tab *Playlists*: anlegen, abspielen,
+zufällig, umsortieren und entfernen über Bearbeiten, umbenennen, löschen; „Zur Playlist …“ im Menü eines Albums, im
+Kontextmenü eines Titels, im großen Player und in der Warteschlange). Noch nicht: Offline-Cache, CarPlay.
 
 ## Verbinden
 
@@ -25,7 +26,7 @@ und trägt die neue ein.
 ## Aufbau
 
 - `Tonregal/` – die App: Seiten (`RootView`, `LibraryViews`, `PlayerViews`, `ListeningViews` mit Sternen, Zufall und
-  Wiederholen), `AppModel`, `Player` (AVPlayer, Now Playing,
+  Wiederholen, `PlaylistViews` mit den eigenen Playlists und der Auswahl „Zur Playlist“), `AppModel`, `Player` (AVPlayer, Now Playing,
   Remote Commands), Cover-Cache. Der Ordner ist mit dem Projekt synchronisiert, neue Dateien brauchen keine Projektänderung.
 - `TonregalKit/` – Swift-Paket ohne UIKit: API-Typen (Spiegel von `LibraryApi.cs`), Client, Adresse, Warteschlange,
   Scrobble-Regel. `swift test` dort läuft auf jedem Mac und in der CI.

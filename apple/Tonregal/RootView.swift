@@ -17,6 +17,7 @@ struct RootView: View {
 enum Route: Hashable {
     case album(Int)
     case artist(Int)
+    case playlist(Int)
 }
 
 extension View {
@@ -25,6 +26,7 @@ extension View {
             switch route {
             case .album(let id): AlbumView(id: id).playerInset()
             case .artist(let id): ArtistView(id: id).playerInset()
+            case .playlist(let id): PlaylistDetailView(id: id).playerInset()
             }
         }
     }
@@ -49,6 +51,8 @@ struct MainView: View {
                 .tabItem { Label("Interpreten", systemImage: "music.mic") }
             NavigationStack { SearchView().playerInset().libraryDestinations() }
                 .tabItem { Label("Suche", systemImage: "magnifyingglass") }
+            NavigationStack { PlaylistsView().playerInset().libraryDestinations() }
+                .tabItem { Label("Playlists", systemImage: "music.note.list") }
             NavigationStack { QueueView().playerInset().libraryDestinations() }
                 .tabItem { Label("Warteschlange", systemImage: "list.bullet") }
             NavigationStack { SettingsView() }

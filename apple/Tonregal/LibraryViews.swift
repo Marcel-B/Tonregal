@@ -162,6 +162,7 @@ struct AlbumView: View {
     let id: Int
     @State private var album: AlbumDetail?
     @State private var error: String?
+    @State private var playlistTracks: TrackSelection?
 
     var body: some View {
         Group {
@@ -174,6 +175,7 @@ struct AlbumView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .playlistPicker($playlistTracks)
         .task(id: id) {
             guard let client = model.client else { return }
             do {
@@ -249,6 +251,12 @@ struct AlbumView: View {
                 } label: {
                     Label("Hinten anhängen", systemImage: "text.line.last.and.arrowtriangle.forward")
                 }
+                Button {
+                    playlistTracks = TrackSelection(QueueItem.album(album).map(\.trackId))
+                } label: {
+                    Label("Zur Playlist …", systemImage: "text.badge.plus")
+                }
+                .disabled(QueueItem.album(album).isEmpty)
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -272,6 +280,7 @@ private struct TrackRow: View {
     let album: AlbumDetail
     let track: Track
     let playing: Bool
+    @State private var playlistTracks: TrackSelection?
 
     private var item: QueueItem? {
         QueueItem.album(album).first { $0.trackId == track.id }
@@ -339,9 +348,11 @@ private struct TrackRow: View {
             if let item {
                 Button("Als Nächstes", systemImage: "text.line.first.and.arrowtriangle.forward") { player.playNext([item]) }
                 Button("Hinten anhängen", systemImage: "text.line.last.and.arrowtriangle.forward") { player.enqueue([item]) }
+                Button("Zur Playlist …", systemImage: "text.badge.plus") { playlistTracks = TrackSelection([item.trackId]) }
                 RatingMenu(fileId: item.fileId)
             }
         }
+        .playlistPicker($playlistTracks)
     }
 
     /// Gäste und Analysewerte (BPM, Tonart), die das Album nicht schon sagt.
