@@ -116,6 +116,12 @@ public struct PlaylistSummary: Codable, Sendable, Hashable, Identifiable {
 public struct PlaylistDetail: Codable, Sendable, Hashable {
     public let playlist: PlaylistSummary
     public let items: [QueueItem]
+
+    /// Die App zeigt eine neue Reihenfolge sofort und ersetzt sie dann durch die Antwort des Servers.
+    public init(playlist: PlaylistSummary, items: [QueueItem]) {
+        self.playlist = playlist
+        self.items = items
+    }
 }
 
 /// Antwort auf „hinzufügen“: `skipped` standen schon darin.
