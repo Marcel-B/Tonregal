@@ -135,6 +135,19 @@ describe('PlayerBar', () => {
     await vi.waitFor(() => expect(player.expanded).toBe(false))
   })
 
+  it('zeigt die tanzende Figur und merkt sich, wenn sie abgeschaltet wird', async () => {
+    const wrapper = mountBar()
+    const player = usePlayerStore()
+    player.play([item(1)])
+    player.expanded = true
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="dancer"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="now-playing-dancer"]').trigger('click')
+    expect(wrapper.find('[data-testid="dancer"]').exists()).toBe(false)
+    expect(localStorage.getItem('tonregal.showsDancer')).toBe('false')
+  })
+
   it('macht nach dem Neuladen an der gemerkten Stelle weiter', async () => {
     usePlayerStore().play([item(1)])
     usePlayerStore().rememberPosition(80)

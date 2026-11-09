@@ -252,6 +252,10 @@ Kennt Navidrome eine frisch übernommene Datei noch nicht (Scan alle 15 Minuten)
 Ein Tipp auf Cover oder Titel der Leiste öffnet den großen Player über den ganzen Bildschirm (wie in Tonwerk-AI und
 der iPhone-App): Cover groß auf einer unscharfen Kopie, Farbe vom Cover, Sterne, Fortschritt mit Restzeit, Rest mischen,
 Zurück/Weiter, Wiederholen, Songtext und Warteschlange; Zuklappen per Pfeil, Escape, Zurück-Geste oder nach unten ziehen.
+Vor dem Cover tanzt eine kleine 3D-Figur, solange Musik läuft, und bleibt bei Pause stehen (Schalter mit dem
+Personen-Symbol, gemerkt im Browser; bei „weniger Bewegung“ ohne Wahl aus). Das Modell (`ClientApp/public/tanzfigur.glb`,
+aus img-o-mat) ist mit gltf-transform verkleinert (Meshopt, WebP-Texturen 512 px, ~0,9 MB); three.js und das Modell
+werden erst geladen, wenn der große Player die Figur zeigt. Nur im Web, nicht in der iPhone-App.
 Warteschlange und Stelle im Stück übersteht ein Neuladen der Seite (`localStorage`), es geht dort weiter, wo man war.
 Die URL setzt das Deploy-Script; Benutzer und Passwort des Navidrome-Kontos gehören in
 `appsettings.Production.json`:
