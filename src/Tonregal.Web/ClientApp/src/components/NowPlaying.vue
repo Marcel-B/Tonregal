@@ -11,6 +11,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useRatingsStore } from '@/stores/ratings'
 import LyricsPanel from './LyricsPanel.vue'
 import ShuffleIcon from './ShuffleIcon.vue'
+import AddToPlaylist from './AddToPlaylist.vue'
 
 /**
  * Der Player über dem ganzen Bildschirm, nach dem Vorbild von Tonwerk-AI und dem großen Player der iPhone-App: das
@@ -263,6 +264,7 @@ onBeforeUnmount(() => {
           @click="toggleLyrics"
         />
         <Button icon="pi pi-list" label="Warteschlange" text size="small" @click="emit('queue')" />
+        <AddToPlaylist :track-ids="[player.current.trackId]" label="Playlist" plain data-testid="now-playing-add" />
       </div>
     </div>
   </div>

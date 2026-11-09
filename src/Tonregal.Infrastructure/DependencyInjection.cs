@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddHttpClient<INavidromeClient, NavidromeClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<ISmartPlaylists, SmartPlaylists>();
         services.AddScoped<ITrackRatings, TrackRatings>();
+        services.AddScoped<IPlaylists, PlaylistService>();
         return services;
     }
 

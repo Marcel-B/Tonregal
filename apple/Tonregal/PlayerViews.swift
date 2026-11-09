@@ -58,6 +58,7 @@ struct NowPlayingView: View {
     @Environment(Player.self) private var player
     @State private var scrub: Double?
     @State private var showsQueue = false
+    @State private var playlistTracks: TrackSelection?
     @AppStorage("tonregal.showsLyrics") private var showsLyrics = false
 
     var body: some View {
@@ -121,6 +122,18 @@ struct NowPlayingView: View {
                 .accessibilityLabel(showsLyrics ? "Cover zeigen" : "Songtext")
                 Spacer()
                 Button {
+                    if let item = player.current {
+                        playlistTracks = TrackSelection([item.trackId])
+                    }
+                } label: {
+                    Image(systemName: "text.badge.plus")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .disabled(player.current == nil)
+                .accessibilityLabel("Zur Playlist")
+                Spacer()
+                Button {
                     showsQueue = true
                 } label: {
                     Image(systemName: "list.bullet")
@@ -132,6 +145,7 @@ struct NowPlayingView: View {
         }
         .padding(.horizontal, 28)
         .padding(.bottom, 8)
+        .playlistPicker($playlistTracks)
         .sheet(isPresented: $showsQueue) {
             NavigationStack {
                 QueueView()
@@ -199,6 +213,7 @@ struct NowPlayingView: View {
 
 struct QueueView: View {
     @Environment(Player.self) private var player
+    @State private var playlistTracks: TrackSelection?
 
     var body: some View {
         List {
@@ -239,6 +254,7 @@ struct QueueView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Warteschlange")
+        .playlistPicker($playlistTracks)
         .overlay {
             if player.queue.items.isEmpty {
                 ContentUnavailableView("Leer", systemImage: "music.note.list", description: Text("Spiel ein Album ab oder häng Titel an."))
@@ -251,6 +267,9 @@ struct QueueView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Rest mischen", systemImage: "shuffle") { player.shuffleUpcoming() }
+                    Button("Als Playlist sichern …", systemImage: "text.badge.plus") {
+                        playlistTracks = TrackSelection(player.queue.items.map(\.trackId))
+                    }
                     Button("Leeren", systemImage: "trash", role: .destructive) { player.stop() }
                 } label: {
                     Image(systemName: "ellipsis.circle")

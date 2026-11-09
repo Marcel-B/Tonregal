@@ -146,6 +146,31 @@ internal sealed class SmartPlaylistConfiguration : IEntityTypeConfiguration<Smar
     }
 }
 
+internal sealed class PlaylistConfiguration : IEntityTypeConfiguration<Playlist>
+{
+    public void Configure(EntityTypeBuilder<Playlist> b)
+    {
+        b.Property(x => x.Name).HasMaxLength(100);
+        b.HasIndex(x => x.Name).IsUnique();
+        b.Property(x => x.Comment).HasMaxLength(500);
+        b.HasMany(x => x.Entries).WithOne(x => x.Playlist)
+            .HasForeignKey(x => x.PlaylistId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class PlaylistEntryConfiguration : IEntityTypeConfiguration<PlaylistEntry>
+{
+    public void Configure(EntityTypeBuilder<PlaylistEntry> b)
+    {
+        b.HasKey(x => new { x.PlaylistId, x.TrackId });
+        // Verschwindet ein Track ganz aus der Library, fällt er aus den Playlists; LibraryScanner.RemoveOrphansAsync
+        // hängt die Einträge vorher an einen Nachfolger, wenn es einen gibt.
+        b.HasOne(x => x.Track).WithMany()
+            .HasForeignKey(x => x.TrackId).OnDelete(DeleteBehavior.Cascade);
+        b.HasIndex(x => x.TrackId);
+    }
+}
+
 internal sealed class TrackLyricsConfiguration : IEntityTypeConfiguration<TrackLyrics>
 {
     public void Configure(EntityTypeBuilder<TrackLyrics> b)

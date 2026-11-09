@@ -49,6 +49,31 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(TonregalClient.queryValue("Beyoncé+1"), "Beyonc%C3%A9%2B1")
     }
 
+    /// So antwortet `GET /api/playlists/{id}`; die Stücke haben die Form der Warteschlange.
+    func testPlaylistDetailDecodes() throws {
+        let json = """
+        {"playlist":{"id":3,"name":"Sonntag","comment":null,"trackCount":1,"durationMs":434000,
+          "updatedAt":"2026-11-08T10:10:21.5665013+00:00","albumIds":[7]},
+         "items":[{"fileId":21,"trackId":11,"title":"Auberge","artist":"Chris Rea","album":"Auberge","albumId":7,"durationMs":434000}]}
+        """
+        let detail = try JSONDecoder().decode(PlaylistDetail.self, from: Data(json.utf8))
+        XCTAssertEqual(detail.playlist.name, "Sonntag")
+        XCTAssertNil(detail.playlist.comment)
+        XCTAssertEqual(detail.items.map(\.trackId), [11])
+
+        let added = #"{"added":2,"skipped":1,"playlist":{"id":3,"name":"Sonntag","comment":"zum Frühstück","trackCount":3,"durationMs":1,"updatedAt":"x","albumIds":[]}}"#
+        let result = try JSONDecoder().decode(PlaylistAddResult.self, from: Data(added.utf8))
+        XCTAssertEqual(result.added + result.skipped, 3)
+    }
+
+    func testProblemMessagePrefersFieldErrorsOverTitle() {
+        let validation = #"{"title":"One or more validation errors occurred.","status":400,"errors":{"name":["Name fehlt oder ist länger als 100 Zeichen"]}}"#
+        XCTAssertEqual(TonregalClient.message(problem: Data(validation.utf8)), "Name fehlt oder ist länger als 100 Zeichen")
+        let conflict = #"{"title":"Conflict","detail":"Es gibt schon eine Playlist „Sonntag“"}"#
+        XCTAssertEqual(TonregalClient.message(problem: Data(conflict.utf8)), "Es gibt schon eine Playlist „Sonntag“")
+        XCTAssertNil(TonregalClient.message(problem: Data("kaputt".utf8)))
+    }
+
     func testDuration() {
         XCTAssertEqual(Duration.format(seconds: 187.9), "3:07")
         XCTAssertEqual(Duration.format(seconds: 3723), "1:02:03")

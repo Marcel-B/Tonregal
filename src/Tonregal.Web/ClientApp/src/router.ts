@@ -16,11 +16,12 @@ export const routes = [
   },
   { path: '/analysis', name: 'analysis', component: () => import('./views/AnalysisView.vue'), meta: { title: 'Analyse', icon: 'pi pi-sliders-h' } },
   { path: '/duplicates', name: 'duplicates', component: () => import('./views/DuplicatesView.vue'), meta: { title: 'Dubletten', icon: 'pi pi-clone' } },
+  { path: '/playlists', name: 'playlists', component: () => import('./views/PlaylistsView.vue'), meta: { title: 'Playlists', icon: 'pi pi-list' } },
   {
-    path: '/playlists',
-    name: 'playlists',
+    path: '/smart-playlists',
+    name: 'smart-playlists',
     component: () => import('./views/SmartPlaylistsView.vue'),
-    meta: { title: 'Smart Playlists', icon: 'pi pi-list' },
+    meta: { title: 'Smart Playlists', icon: 'pi pi-bolt' },
   },
   { path: '/connections', name: 'connections', component: () => import('./views/ConnectionsView.vue'), meta: { title: 'Verbindungen', icon: 'pi pi-link' } },
 ]
@@ -30,6 +31,7 @@ export const router = createRouter({
   routes: [
     ...routes,
     { path: '/library/artists/:id(\\d+)', name: 'artist', component: () => import('./views/ArtistView.vue'), props: (r) => ({ id: Number(r.params.id) }) },
+    { path: '/playlists/:id(\\d+)', name: 'playlist', component: () => import('./views/PlaylistView.vue'), props: (r) => ({ id: Number(r.params.id) }) },
     { path: '/library/albums/:id(\\d+)', name: 'album', component: () => import('./views/AlbumView.vue'), props: (r) => ({ id: Number(r.params.id) }) },
   ],
 })

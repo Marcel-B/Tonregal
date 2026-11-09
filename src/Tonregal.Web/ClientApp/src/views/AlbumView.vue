@@ -10,6 +10,7 @@ import Rating from 'primevue/rating'
 import AlbumCover from '@/components/AlbumCover.vue'
 import MatchDialog from '@/components/MatchDialog.vue'
 import ShuffleIcon from '@/components/ShuffleIcon.vue'
+import AddToPlaylist from '@/components/AddToPlaylist.vue'
 import { api, formatDuration, type AlbumDetail, type FileDto, type TrackDto } from '@/api'
 import { albumQueue, usePlayerStore } from '@/stores/player'
 import { useRatingsStore } from '@/stores/ratings'
@@ -125,6 +126,12 @@ function openMatch(track: TrackDto) {
           >
             <template #icon="{ class: iconClass }"><ShuffleIcon :class="iconClass" /></template>
           </Button>
+          <AddToPlaylist
+            :track-ids="album.tracks.filter((t) => t.files.length).map((t) => t.id)"
+            label="Zur Playlist"
+            title="Alle Stücke des Albums zu einer Playlist hinzufügen"
+            data-testid="album-to-playlist"
+          />
           <Button
             v-if="album.tracks.length"
             as="a"
@@ -203,7 +210,7 @@ function openMatch(track: TrackDto) {
           </div>
         </template>
       </Column>
-      <Column class="w-40">
+      <Column class="w-48">
         <template #body="{ data }">
           <Button
             icon="pi pi-play"
@@ -227,6 +234,7 @@ function openMatch(track: TrackDto) {
             data-testid="play-next"
             @click="player.playNext(trackItems(data))"
           />
+          <AddToPlaylist :track-ids="[data.id]" :disabled="!data.files.length" />
           <Button
             v-if="data.files.length"
             as="a"

@@ -9,6 +9,8 @@ import { usePlayerStore } from '@/stores/player'
 import { useRatingsStore } from '@/stores/ratings'
 import NowPlaying from './NowPlaying.vue'
 import ShuffleIcon from './ShuffleIcon.vue'
+import AddToPlaylist from './AddToPlaylist.vue'
+import { useReorder } from '@/reorder'
 
 const player = usePlayerStore()
 const ratings = useRatingsStore()
@@ -146,41 +148,10 @@ function expand() {
 
 // ---- Warteschlange umsortieren --------------------------------------------------------------------------------
 
-/** Am Griff gezogen (Maus, Finger, Stift über Pointer Events, die auch Safari auf dem iPhone kann) oder per Pfeiltaste. */
-const dragFrom = ref(-1)
-const dragTo = ref(-1)
-const rows = ref<HTMLElement[]>([])
-
-function dragStart(event: PointerEvent, at: number) {
-  dragFrom.value = dragTo.value = at
-  ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
-}
-
-function dragMove(event: PointerEvent) {
-  if (dragFrom.value < 0) return
-  const at = rows.value.findIndex((row) => {
-    const box = row.getBoundingClientRect()
-    return event.clientY >= box.top && event.clientY < box.bottom
-  })
-  if (at >= 0) dragTo.value = at
-  else if (rows.value.length && event.clientY >= rows.value[rows.value.length - 1]!.getBoundingClientRect().bottom) {
-    dragTo.value = rows.value.length - 1
-  } else if (rows.value.length && event.clientY < rows.value[0]!.getBoundingClientRect().top) dragTo.value = 0
-}
-
-function dragEnd() {
-  if (dragFrom.value >= 0 && dragTo.value >= 0) player.move(dragFrom.value, dragTo.value)
-  dragFrom.value = dragTo.value = -1
-}
-
-function moveByKey(event: KeyboardEvent, at: number) {
-  const to = event.key === 'ArrowUp' ? at - 1 : event.key === 'ArrowDown' ? at + 1 : -1
-  if (to < 0 || to >= player.queue.length) return
-  event.preventDefault()
-  player.move(at, to)
-  // Der Fokus folgt dem Eintrag, damit sich mehrfach drücken lässt.
-  requestAnimationFrame(() => rows.value[to]?.querySelector<HTMLElement>('[data-handle]')?.focus())
-}
+const { dragFrom, dragTo, dragStart, dragMove, dragEnd, moveByKey } = useReorder(
+  () => player.queue.length,
+  (from, to) => player.move(from, to),
+)
 
 function previous() {
   // Wie bei den meisten Playern: nach ein paar Sekunden zurück an den Anfang, sonst ein Stück zurück.
@@ -369,7 +340,14 @@ const time = (seconds: number) => formatDuration(seconds * 1000)
       >
         <template #icon="{ class: iconClass }"><ShuffleIcon :class="iconClass" /></template>
       </Button>
-      <Button label="Leeren" icon="pi pi-trash" severity="secondary" size="small" :disabled="!player.queue.length" @click="(player.clear(), (queueVisible = false))" />
+      <Button label="Leeren" icon="pi pi-trash" severity="secondary" size="small" class="mr-2" :disabled="!player.queue.length" @click="(player.clear(), (queueVisible = false))" />
+      <AddToPlaylist
+        :track-ids="player.queue.map((i) => i.trackId)"
+        label="Als Playlist"
+        title="Die ganze Warteschlange in eine Playlist übernehmen"
+        :disabled="!player.queue.length"
+        data-testid="queue-to-playlist"
+      />
     </template>
   </Drawer>
 </template>
