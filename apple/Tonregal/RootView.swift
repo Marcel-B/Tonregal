@@ -47,6 +47,8 @@ struct MainView: View {
                 .tabItem { Label("Alben", systemImage: "square.stack") }
             NavigationStack { ArtistsView().playerInset().libraryDestinations() }
                 .tabItem { Label("Interpreten", systemImage: "music.mic") }
+            NavigationStack { SearchView().playerInset().libraryDestinations() }
+                .tabItem { Label("Suche", systemImage: "magnifyingglass") }
             NavigationStack { QueueView().playerInset().libraryDestinations() }
                 .tabItem { Label("Warteschlange", systemImage: "list.bullet") }
             NavigationStack { SettingsView() }

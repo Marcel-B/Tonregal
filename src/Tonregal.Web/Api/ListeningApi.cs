@@ -65,7 +65,7 @@ public static class ListeningApi
         return api;
     }
 
-    private static PlaylistItem Item(Track t)
+    internal static PlaylistItem Item(Track t)
     {
         var file = t.Files.OrderByDescending(f => f.Format == AudioFormat.Flac).ThenByDescending(f => f.Bitrate).First();
         var artist = t.Artists.Count > 0 ? string.Join(", ", t.Artists.Select(a => a.Name)) : t.Album.AlbumArtist.Name;

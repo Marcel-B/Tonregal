@@ -23,6 +23,18 @@ public struct TonregalClient: Sendable {
     public func albums() async throws -> [AlbumListItem] { try await get("api/library/albums") }
     public func album(_ id: Int) async throws -> AlbumDetail { try await get("api/library/albums/\(id)") }
 
+    /// Interpreten, Alben und Titel; jedes Wort muss vorkommen, Akzente und Großschreibung zählen nicht.
+    public func search(_ query: String) async throws -> LibrarySearchResult {
+        try await get("api/library/search?q=" + Self.queryValue(query))
+    }
+
+    /// Prozentkodiert für einen Query-Wert: `urlQueryAllowed` ließe `&`, `+` und `=` stehen, `alphanumerics` auch „é“.
+    static func queryValue(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
+    }
+
+    private static let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
     /// Songtext aus .lrc, Tags oder lrclib.net; ohne Treffer `source == "None"` und keine Zeilen.
     /// lrclib.net kann beim ersten Abruf eines Songtexts etwas brauchen, daher mehr Geduld als sonst.
     public func lyrics(track id: Int) async throws -> SongLyrics {
