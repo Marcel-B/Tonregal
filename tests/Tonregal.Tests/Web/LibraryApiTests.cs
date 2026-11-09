@@ -79,6 +79,51 @@ public sealed class LibraryApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Suche_findet_Titel_Interpreten_und_Alben()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await WaitForScanAsync();
+
+        var byTitle = await _client.GetFromJsonAsync<LibrarySearchResult>("/api/library/search?q=zweiter", Json, ct);
+        var track = Assert.Single(byTitle!.Tracks);
+        Assert.Equal("Zweiter Song (feat. Gast)", track.Title);
+        Assert.Equal("Testalbum", track.Album);
+        Assert.Equal(1, byTitle.TrackCount);
+        Assert.Empty(byTitle.Artists);
+
+        // Wörter dürfen sich auf Titel, Interpret und Album verteilen; Groß- und Kleinschreibung zählt nicht.
+        var spread = await _client.GetFromJsonAsync<LibrarySearchResult>("/api/library/search?q=SONG%20testband", Json, ct);
+        Assert.Equal(3, spread!.TrackCount);
+        Assert.Empty(spread.Artists);
+
+        var artist = await _client.GetFromJsonAsync<LibrarySearchResult>("/api/library/search?q=testb", Json, ct);
+        Assert.Equal("Testband", Assert.Single(artist!.Artists).Name);
+
+        var album = await _client.GetFromJsonAsync<LibrarySearchResult>("/api/library/search?q=testalb", Json, ct);
+        Assert.Equal("Testalbum", Assert.Single(album!.Albums).Title);
+        Assert.Equal(3, album.Tracks.Count);
+
+        // Ein Titel, der genau so heißt, steht vor einem, in dem das Wort nur vorkommt.
+        var ranked = await _client.GetFromJsonAsync<LibrarySearchResult>("/api/library/search?q=dritter%20song", Json, ct);
+        Assert.Equal("Dritter Song", Assert.Single(ranked!.Tracks).Title);
+
+        var none = await _client.GetFromJsonAsync<LibrarySearchResult>("/api/library/search?q=%20%20", Json, ct);
+        Assert.Empty(none!.Tracks);
+        Assert.Empty(none.Albums);
+        Assert.Empty(none.Artists);
+    }
+
+    [Theory]
+    [InlineData("AC/DC", "acdc")]
+    [InlineData("Beyoncé", "beyonce")]
+    [InlineData("Die Ärzte", "die arzte")]
+    [InlineData("Straße  der   Lieder", "strasse der lieder")]
+    [InlineData("Sampler-Stück", "sampler stuck")]
+    [InlineData("Help!", "help")]
+    public void Suche_vergleicht_ohne_Akzente_und_Satzzeichen(string value, string expected) =>
+        Assert.Equal(expected, LibrarySearch.Normalize(value));
+
+    [Fact]
     public async Task Unbekanntes_Album_404()
     {
         await WaitForScanAsync();

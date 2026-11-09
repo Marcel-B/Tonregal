@@ -55,6 +55,9 @@ public static class LibraryApi
             return artist is null ? TypedResults.NotFound() : TypedResults.Ok(artist);
         });
 
+        // Suche über Interpreten, Alben und Titel für Web-App und iPhone; Titel kommen so, wie der Player sie abspielt.
+        library.MapGet("/search", (string? q, TonregalDbContext db, CancellationToken ct) => LibrarySearch.SearchAsync(db, q, ct));
+
         // Alle Alben, zuletzt übernommene zuerst (die Id wächst mit jedem Scan); die App blättert darin ohne Umweg über den Interpreten.
         library.MapGet("/albums", async (TonregalDbContext db, CancellationToken ct) =>
             await db.Albums

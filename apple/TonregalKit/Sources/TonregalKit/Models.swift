@@ -79,6 +79,17 @@ public struct AlbumDetail: Codable, Sendable, Hashable, Identifiable {
     public let tracks: [Track]
 }
 
+/// So antwortet `GET /api/library/search`; `trackCount` zählt alle passenden Titel, `tracks` hält höchstens 100.
+public struct LibrarySearchResult: Codable, Sendable, Hashable {
+    public let query: String
+    public let artists: [ArtistSummary]
+    public let albums: [AlbumListItem]
+    public let tracks: [QueueItem]
+    public let trackCount: Int
+
+    public var isEmpty: Bool { artists.isEmpty && albums.isEmpty && tracks.isEmpty }
+}
+
 public enum Duration {
     /// `3:07` oder `1:02:03`, wie `formatDuration` im Web-Client.
     public static func format(seconds: Double) -> String {
