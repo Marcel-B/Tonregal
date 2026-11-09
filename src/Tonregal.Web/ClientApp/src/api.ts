@@ -350,7 +350,7 @@ export interface SmartPlaylistInput {
   genre: string | null
   addedWithinDays: number | null
   neverPlayed: boolean
-  /** Mindestens so viele Sterne (1–5), bewertet wird in Navidrome. */
+  /** Mindestens so viele Sterne (1–5), wie in Tonregal bewertet. */
   minRating: number | null
   sort: SmartPlaylistSort
   limit: number | null
@@ -361,7 +361,7 @@ export interface SmartPlaylist extends SmartPlaylistInput {
   updatedAt: string
   /** .nsp-Datei relativ zur Library. */
   path: string
-  /** Passende Stücke in Tonregal, ohne Hör-Regeln und Bewertung (die kennt nur Navidrome). */
+  /** Passende Stücke in Tonregal, ohne „nie gehört“ (das kennt nur Navidrome). */
   matching: number
   nsp: string
 }
@@ -505,7 +505,7 @@ export const api = {
   scanDuplicates: () => request<ScanStatus>('POST', '/duplicates/scan'),
   resolveDuplicate: (groupId: number, keepFileIds: number[]) => request<void>('POST', `/duplicates/${groupId}/resolve`, { keepFileIds }),
   resolveSuggested: (groupIds: number[]) => request<ResolveSuggestedResult>('POST', '/duplicates/resolve-suggested', { groupIds }),
-  /** Sterne je Datei-ID aus Navidrome; unbewertete fehlen. */
+  /** Sterne je Datei-ID; unbewertete fehlen. MP3 und FLAC desselben Stücks teilen sich eine Bewertung. */
   ratings: (fileIds: number[]) =>
     fileIds.length
       ? get<Record<string, number>>(`/player/ratings?${fileIds.map((id) => `files=${id}`).join('&')}`)

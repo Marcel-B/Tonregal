@@ -9,8 +9,8 @@ namespace Tonregal.Web.Api;
 public sealed record RatingInput(int Rating);
 
 /// <summary>
-/// Bewertungen und Zufallswiedergabe für die Player. Bewertungen liegen in Navidrome (Subsonic <c>setRating</c>), damit
-/// Smart Playlists und andere Subsonic-Apps sie sehen; Tonregal speichert sie nicht selbst.
+/// Bewertungen und Zufallswiedergabe für die Player. Bewertungen liegen in Tonregals Datenbank (<see cref="ITrackRatings"/>);
+/// Navidrome bekommt eine Kopie für seine Smart Playlists.
 /// </summary>
 public static class ListeningApi
 {
@@ -21,31 +21,22 @@ public static class ListeningApi
     {
         var player = api.MapGroup("/player");
 
-        // Bewertung je Datei-ID ({"21": 4}); unbewertete fehlen. Ohne Navidrome bleibt die Antwort leer.
-        player.MapGet("/ratings", async (int[]? files, TonregalDbContext db, INavidromeClient navidrome, CancellationToken ct) =>
+        // Bewertung je Datei-ID ({"21": 4}); unbewertete fehlen.
+        player.MapGet("/ratings", async (int[]? files, ITrackRatings ratings, CancellationToken ct) =>
         {
-            var ids = (files ?? []).Distinct().Take(1000).ToList();
-            var paths = await db.AudioFiles.Where(f => ids.Contains(f.Id)).Select(f => new { f.Id, f.Path }).ToListAsync(ct);
-            var ratings = await navidrome.RatingsAsync([.. paths.Select(p => p.Path)], ct);
-            return paths.Where(p => ratings.ContainsKey(p.Path)).ToDictionary(p => p.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), p => ratings[p.Path]);
+            var found = await ratings.ForFilesAsync([.. (files ?? []).Distinct().Take(1000)], ct);
+            return found.ToDictionary(r => r.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), r => r.Value);
         });
 
-        player.MapPut("/files/{id:int}/rating", async Task<IResult> (
-            int id, RatingInput input, TonregalDbContext db, INavidromeClient navidrome, CancellationToken ct) =>
+        player.MapPut("/files/{id:int}/rating", async Task<IResult> (int id, RatingInput input, ITrackRatings ratings, CancellationToken ct) =>
         {
             if (input.Rating is < 0 or > 5)
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["rating"] = ["0 bis 5 Sterne"] });
-            var path = await db.AudioFiles.Where(f => f.Id == id).Select(f => f.Path).SingleOrDefaultAsync(ct);
-            if (path is null)
-                return TypedResults.NotFound();
-            if (await navidrome.FindSongIdAsync(path, ct) is not { } songId)
-                return TypedResults.Problem(
-                    "Navidrome kennt das Stück noch nicht (Scan alle 15 Minuten) oder ist nicht eingerichtet.",
-                    statusCode: StatusCodes.Status409Conflict);
-            return await navidrome.SetRatingAsync(songId, input.Rating, ct)
-                ? TypedResults.NoContent()
-                : TypedResults.Problem("Navidrome hat die Bewertung nicht angenommen", statusCode: StatusCodes.Status503ServiceUnavailable);
+            return await ratings.SetAsync(id, input.Rating, ct) ? TypedResults.NoContent() : TypedResults.NotFound();
         });
+
+        // Gleicht sofort mit Navidrome ab, statt auf den nächsten Lauf zu warten.
+        player.MapPost("/ratings/sync", async (ITrackRatings ratings, CancellationToken ct) => TypedResults.Ok(await ratings.SyncAsync(ct)));
 
         // Zufällige Warteschlange: mit artist alle Stücke des Interpreten (eigene Alben und Gastauftritte), sonst die ganze Bibliothek.
         player.MapGet("/shuffle", async Task<IResult> (int? artist, int? limit, TonregalDbContext db, CancellationToken ct) =>

@@ -42,6 +42,7 @@ internal sealed class TrackConfiguration : IEntityTypeConfiguration<Track>
         b.HasIndex(x => x.MusicBrainzRecordingId);
         b.HasIndex(x => x.AcoustId);
         b.HasIndex(x => new { x.AlbumId, x.Disc, x.Number });
+        b.HasIndex(x => x.RatingPending);
     }
 }
 

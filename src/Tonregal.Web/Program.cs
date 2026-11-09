@@ -16,6 +16,7 @@ using Tonregal.Web.Hubs;
 using Tonregal.Web.Inbox;
 using Tonregal.Web.Library;
 using Tonregal.Web.Monitoring;
+using Tonregal.Web.Ratings;
 
 var builder = WebApplication.CreateBuilder(args);
 var metrics = MonitoringSetup.MetricsEnabled(builder.Configuration);
@@ -45,6 +46,7 @@ builder.Services.AddSingleton<AnalysisService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AnalysisService>());
 builder.Services.AddSingleton<BackupService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupService>());
+builder.Services.AddHostedService<RatingSyncService>();
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();

@@ -123,6 +123,34 @@ public sealed class LibraryScannerTests : IDisposable
     }
 
     [Fact]
+    public async Task Anderes_Album_nimmt_die_Bewertung_zum_neuen_Track_mit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await ScanAsync();
+        var path = Path.Combine(_library.AlbumFolder, "03 - Dritter Song.m4a");
+        await using (var db = CreateContext())
+        {
+            var track = await db.Tracks.SingleAsync(t => t.Title == "Dritter Song", ct);
+            (track.Rating, track.RatedAt) = (4, DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(ct);
+        }
+
+        using (var file = TagLib.File.Create(path))
+        {
+            file.Tag.Album = "Remixe";
+            file.Save();
+        }
+
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(1));
+        await ScanAsync();
+
+        await using var check = CreateContext();
+        var moved = await check.Tracks.SingleAsync(t => t.Title == "Dritter Song", ct);
+        Assert.Equal("Remixe", (await check.Albums.SingleAsync(a => a.Id == moved.AlbumId, ct)).Title);
+        Assert.Equal((4, true), (moved.Rating, moved.RatingPending));
+    }
+
+    [Fact]
     public async Task Unlesbare_Datei_wird_als_Fehler_gemeldet()
     {
         File.WriteAllText(Path.Combine(_library.AlbumFolder, "kaputt.mp3"), "kein mp3");

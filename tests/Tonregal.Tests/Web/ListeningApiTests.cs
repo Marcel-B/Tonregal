@@ -16,11 +16,15 @@ using Tonregal.Web.Library;
 
 namespace Tonregal.Tests.Web;
 
-/// <summary>Bewertungen gegen ein Fake-Navidrome und eine kleine navidrome.db mit Navidromes Tabellen, dazu die Zufallswiedergabe.</summary>
+/// <summary>
+/// Bewertungen in Tonregal, ihr Abgleich gegen ein Fake-Navidrome und eine kleine navidrome.db mit Navidromes Tabellen,
+/// dazu die Zufallswiedergabe.
+/// </summary>
 public sealed class ListeningApiTests : IDisposable
 {
     private const string FirstSong = "Testband/2024 - Testalbum/01 - Erster Song.mp3";
     private const string SecondSong = "Testband/2024 - Testalbum/02 - Zweiter Song.flac";
+    private const string ThirdSong = "Testband/2024 - Testalbum/03 - Dritter Song.m4a";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -41,6 +45,8 @@ public sealed class ListeningApiTests : IDisposable
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Testing").UseSetting("Tonregal:MusicRoot", _library.MusicRoot);
+            // Die Tests gleichen selbst ab, damit kein Lauf im Hintergrund dazwischenkommt.
+            b.UseSetting("Tonregal:Navidrome:RatingSyncMinutes", "0");
             if (navidrome)
             {
                 b.UseSetting("Tonregal:Navidrome:Url", "http://navidrome.test:4533/");
@@ -88,21 +94,18 @@ public sealed class ListeningApiTests : IDisposable
         return await scope.ServiceProvider.GetRequiredService<TonregalDbContext>().AudioFiles.ToDictionaryAsync(f => f.Path, f => f.Id, Ct);
     }
 
-    [Fact]
-    public async Task Liest_die_Bewertungen_des_eigenen_Benutzers()
+    private Task<Dictionary<string, int>?> RatingsAsync(HttpClient client, params int[] files) =>
+        client.GetFromJsonAsync<Dictionary<string, int>>($"/api/player/ratings?{string.Join('&', files.Select(f => $"files={f}"))}", Ct);
+
+    private async Task<RatingSyncResult> SyncAsync(HttpClient client)
     {
-        var client = Client();
-        var ids = await FileIdsAsync();
-
-        var ratings = await client.GetFromJsonAsync<Dictionary<string, int>>(
-            $"/api/player/ratings?files={ids[FirstSong]}&files={ids[SecondSong]}&files=999", Ct);
-
-        Assert.Equal(new Dictionary<string, int> { [ids[FirstSong].ToString()] = 4 }, ratings);
-        Assert.Empty(_navidrome.Requests);
+        var response = await client.PostAsync("/api/player/ratings/sync", null, Ct);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<RatingSyncResult>(Json, Ct))!;
     }
 
     [Fact]
-    public async Task Bewertet_in_Navidrome()
+    public async Task Bewertet_in_Tonregal_und_reicht_an_Navidrome_weiter()
     {
         var client = Client();
         var ids = await FileIdsAsync();
@@ -111,6 +114,7 @@ public sealed class ListeningApiTests : IDisposable
         var cleared = await client.PutAsJsonAsync($"/api/player/files/{ids[FirstSong]}/rating", new { rating = 0 }, Ct);
 
         Assert.Equal((HttpStatusCode.NoContent, HttpStatusCode.NoContent), (rated.StatusCode, cleared.StatusCode));
+        Assert.Equal(new Dictionary<string, int> { [ids[SecondSong].ToString()] = 5 }, await RatingsAsync(client, ids[FirstSong], ids[SecondSong], 999));
         Assert.All(_navidrome.Requests, r => Assert.Equal("/rest/setRating", r.AbsolutePath));
         Assert.Equal([("nd-2", "5"), ("nd-1", "0")], _navidrome.Requests.Select(r => HttpUtility.ParseQueryString(r.Query)).Select(q => (q["id"], q["rating"])));
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/player/files/{ids[FirstSong]}/rating", new { rating = 6 }, Ct)).StatusCode);
@@ -118,14 +122,57 @@ public sealed class ListeningApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Ohne_Navidrome_keine_Bewertungen()
+    public async Task Bewertet_auch_ohne_Navidrome()
     {
         var client = Client(navidrome: false);
         var ids = await FileIdsAsync();
 
-        Assert.Empty((await client.GetFromJsonAsync<Dictionary<string, int>>($"/api/player/ratings?files={ids[FirstSong]}", Ct))!);
+        Assert.Empty((await RatingsAsync(client, ids[FirstSong]))!);
         var rated = await client.PutAsJsonAsync($"/api/player/files/{ids[FirstSong]}/rating", new { rating = 3 }, Ct);
-        Assert.Equal(HttpStatusCode.Conflict, rated.StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent, rated.StatusCode);
+        Assert.Equal(new Dictionary<string, int> { [ids[FirstSong].ToString()] = 3 }, await RatingsAsync(client, ids[FirstSong]));
+        Assert.Equal(new RatingSyncResult(0, 0, 0), await SyncAsync(client));
+        Assert.Empty(_navidrome.Requests);
+    }
+
+    [Fact]
+    public async Task Uebernimmt_Navidromes_Bewertungen_nur_fuer_unbewertete_Stuecke()
+    {
+        var client = Client();
+        var ids = await FileIdsAsync();
+        // Der dritte Song bekommt in Tonregal 2 Sterne, bevor Navidrome ihn kennt.
+        await client.PutAsJsonAsync($"/api/player/files/{ids[ThirdSong]}/rating", new { rating = 2 }, Ct);
+
+        var first = await SyncAsync(client);
+
+        // Nur marcels 4 Sterne für den ersten Song; die 5 Sterne des Gasts zählen nicht.
+        Assert.Equal(new RatingSyncResult(1, 0, 1), first);
+        Assert.Equal(
+            new Dictionary<string, int> { [ids[FirstSong].ToString()] = 4, [ids[ThirdSong].ToString()] = 2 },
+            await RatingsAsync(client, ids[FirstSong], ids[SecondSong], ids[ThirdSong]));
+        Assert.Empty(_navidrome.Requests);
+
+        // In Tonregal geändert: Navidromes alte 4 Sterne holen die Bewertung nicht zurück.
+        await client.PutAsJsonAsync($"/api/player/files/{ids[FirstSong]}/rating", new { rating = 1 }, Ct);
+        AddToNavidrome("nd-3", ThirdSong);
+        _navidrome.Requests.Clear();
+        var second = await SyncAsync(client);
+
+        Assert.Equal(new RatingSyncResult(0, 1, 0), second);
+        Assert.Equal(("nd-3", "2"), _navidrome.Requests.Select(r => HttpUtility.ParseQueryString(r.Query)).Select(q => (q["id"], q["rating"])).Single());
+        Assert.Equal(1, (await RatingsAsync(client, ids[FirstSong]))![ids[FirstSong].ToString()]);
+    }
+
+    private void AddToNavidrome(string id, string path)
+    {
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(_library.MusicRoot, "navidrome", "navidrome.db")};Pooling=False");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO media_file VALUES ($id, $path)";
+        command.Parameters.AddWithValue("$id", id);
+        command.Parameters.AddWithValue("$path", path);
+        command.ExecuteNonQuery();
     }
 
     [Fact]

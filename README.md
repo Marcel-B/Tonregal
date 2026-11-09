@@ -271,9 +271,16 @@ im Songtext erzwingt es sofort (und ersetzt eine falsche `.lrc`). Eine von Hand 
 `Tonregal:Lyrics:Online=false` schaltet lrclib.net ab, `WriteSidecar=false` das Schreiben der `.lrc`.
 
 **Bewerten, Zufall, Wiederholen:** Sterne (in der Player-Leiste, auch auf dem Telefon, im großen Player und in der Titelliste eines Albums; ein Klick auf
-den gesetzten Stern nimmt sie zurück) gehen per Subsonic `setRating` an Navidrome und gelten für das Konto aus
-`appsettings.Production.json`; gelesen werden sie aus `navidrome.db`. Tonregal speichert sie nicht selbst und schreibt
-sie nicht in die Tags. Eine frisch übernommene Datei lässt sich erst bewerten, wenn Navidrome sie gescannt hat.
+den gesetzten Stern nimmt sie zurück) speichert Tonregal selbst, je Stück in der Tabelle `Tracks` (`Rating`, `RatedAt`):
+MP3 und FLAC desselben Stücks teilen sich eine Bewertung, sie gilt sofort, auch für frisch übernommene Dateien, und
+kommt mit `tonregal.db` ins Backup. In die Tags schreibt Tonregal sie nicht. Bekommt eine Datei durch neue Tags einen
+anderen Track, nimmt sie die Bewertung mit. Navidrome bekommt jede Bewertung als Kopie per Subsonic `setRating` (für
+das Konto aus `appsettings.Production.json`), damit seine Smart Playlists sie auswerten; kennt es ein Stück noch nicht
+oder ist es nicht erreichbar, bleibt sie vorgemerkt (`RatingPending`). Eine Minute nach dem Start und dann alle
+`Tonregal:Navidrome:RatingSyncMinutes` (15, 0 = aus) gleicht Tonregal ab: offene Bewertungen gehen an Navidrome, und
+für Stücke, die in Tonregal nie bewertet wurden, übernimmt es die Bewertung aus `navidrome.db` (so kamen die alten
+herüber). Eine in Tonregal gesetzte oder zurückgenommene Bewertung überschreibt Navidrome nie mehr.
+`POST /api/player/ratings/sync` gleicht sofort ab.
 *Zufällig* mischt ein Album, auf einer Interpretenseite alle Stücke des Interpreten (auch Gastauftritte auf fremden
 Alben) und in der Bibliothek *Alles zufällig* bis zu 2000 Stücke (`GET /api/player/shuffle`). In der Warteschlange
 mischt *Rest mischen* (auch im großen Player), was nach dem laufenden Stück kommt; Einträge lassen sich am Griff ziehen
