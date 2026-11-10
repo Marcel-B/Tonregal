@@ -3,7 +3,8 @@
 import { ref } from 'vue'
 import { api } from '@/api'
 
-defineProps<{ albumId: number; alt: string }>()
+/** `version` hängt sich an die Adresse, damit ein neues Cover den Browser-Cache umgeht. */
+defineProps<{ albumId: number; alt: string; version?: number }>()
 const failed = ref(false)
 </script>
 
@@ -11,7 +12,7 @@ const failed = ref(false)
   <div class="aspect-square w-full overflow-hidden rounded-md bg-surface-200 dark:bg-surface-800 flex items-center justify-center">
     <img
       v-if="!failed"
-      :src="api.coverUrl(albumId)"
+      :src="version ? `${api.coverUrl(albumId)}?v=${version}` : api.coverUrl(albumId)"
       :alt="alt"
       loading="lazy"
       class="size-full object-cover"

@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 namespace Tonregal.Application;
 
-/// <summary>
-/// Gemeinsames Lock für alles, was Dateien in der Library schreibt (Import, Analyse) oder sie liest,
-/// während andere schreiben dürften (Backup). So landen nie halbe Dateien in Nextcloud.
-/// </summary>
-public sealed class LibraryWriteLock
+/// <summary>Ein nicht wiedereintrittsfähiges Lock, das sagt, wer es hält.</summary>
+public abstract class LibraryLock
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
 
@@ -19,7 +16,7 @@ public sealed class LibraryWriteLock
         return new Release(this);
     }
 
-    private sealed class Release(LibraryWriteLock owner) : IDisposable
+    private sealed class Release(LibraryLock owner) : IDisposable
     {
         private int _released;
 
@@ -32,3 +29,16 @@ public sealed class LibraryWriteLock
         }
     }
 }
+
+/// <summary>
+/// Gemeinsames Lock für alles, was Dateien in der Library schreibt (Import, Analyse, Tag-Editor) oder sie liest,
+/// während andere schreiben dürften (Backup). So landen nie halbe Dateien in Nextcloud.
+/// </summary>
+public sealed class LibraryWriteLock : LibraryLock;
+
+/// <summary>
+/// Hält der Library-Scan, solange er die Dateien mit dem Index abgleicht, und wer Dateien der Library umbenennt
+/// (Tag-Editor). Sonst sähe der Scan eine umbenannte Datei als verschwunden und nähme ihren Eintrag samt Bewertung
+/// mit. Wer beide braucht, nimmt erst dieses, dann <see cref="LibraryWriteLock"/>.
+/// </summary>
+public sealed class LibraryScanLock : LibraryLock;

@@ -107,4 +107,29 @@ describe('AlbumView', () => {
     expect(player.queue.map((i) => i.title)).toEqual(['Erster Song', 'Zweiter Song', 'Erster Song'])
     expect(player.queue[1]!.artist).toBe('Testband, Gast')
   })
+
+  it('ändert die Tags eines Tracks und meldet das Ergebnis', async () => {
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === 'PUT'
+        ? new Response(JSON.stringify({ albumId: 7, changed: 1, moved: 1, errors: [] }))
+        : new Response(JSON.stringify(album)),
+    )
+    vi.stubGlobal('fetch', fetch)
+    const wrapper = mount(AlbumView, {
+      props: { id: 7 },
+      global: { plugins: [PrimeVue], stubs: { RouterLink: RouterLinkStub, teleport: true } },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('button[data-testid="edit-track"]')[0]!.trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-testid="tag-title"]').setValue('Erstes Lied')
+    await wrapper.find('form[data-testid="tag-form"]').trigger('submit')
+    await flushPromises()
+
+    const put = fetch.mock.calls.find((c) => c[1]?.method === 'PUT')!
+    expect(put[0]).toBe('/api/library/tracks/1/tags')
+    expect(JSON.parse(put[1]!.body as string)).toEqual({ title: 'Erstes Lied' })
+    expect(wrapper.find('[data-testid="edit-message"]').text()).toBe('1 Datei geändert, 1 nach der Ordnerregel umbenannt.')
+  })
 })

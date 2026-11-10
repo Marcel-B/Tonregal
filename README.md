@@ -161,6 +161,20 @@ Ausgaben, bringt *Ausgaben vereinheitlichen* auf der Albumseite alle auf das Rel
 Dateien und Ordner lassen sich auch per Drag & Drop auf die Inbox-Seite hochladen; lose Dateien landen
 gemeinsam in einem Ordner `Upload {Datum Uhrzeit}`.
 
+**Tag-Editor:** *Bearbeiten* auf der Albumseite ändert Album, Album-Interpret, Jahr, Genre und Cover für alle
+Tracks, der Stift in einer Trackzeile Titel, Interpreten (mehrere mit `;` getrennt), Nummer, Disc, Album,
+Album-Interpret, Jahr und Genre eines Tracks (`PUT /api/library/albums/{id}/tags`, `…/tracks/{id}/tags`,
+`PUT /api/library/albums/{id}/cover`). Die Änderung landet in den Dateien: Tonregal schreibt in eine Kopie, liest
+sie zurück und legt sie erst dann an den Platz des Originals. Ändert sich etwas, das den Pfad bestimmt, bekommt die
+Datei ihren Platz nach der Ordnerregel, die `.lrc` daneben zieht mit, ein leerer Albumordner gibt sein Cover ab;
+sonst bleibt die Datei, wo sie ist. Danach liest Tonregal genau diese Dateien neu ein, Bewertungen und Playlists
+bleiben am Stück, und umbenannte bewertete Stücke gehen noch einmal an Navidrome. Ein neuer Album-Interpret nimmt
+die Tracks mit, die er selbst singt (Gäste bleiben); „Various Artists“ macht das Album zur Compilation. Verlässt
+ein einzelner Track sein Album, verliert er dessen MusicBrainz-Release-IDs, damit Navidrome ihn nicht ins alte
+Album sortiert. Ein hochgeladenes Cover (JPEG oder PNG, bis 20 MB) wird `cover.jpg`/`cover.png` im Albumordner
+(das alte geht in den Papierkorb) und ersetzt die eingebetteten Bilder. Scan und Tag-Editor schließen sich aus
+(`LibraryScanLock`), damit ein laufender Scan eine gerade umbenannte Datei nicht für verschwunden hält.
+
 **Altbestand:** MP3-Sicherungskopien liegen in `Musik/Altbestand` (anderer Ort: `Tonregal:LegacyPath` in
 `appsettings.Production.json`). *Altbestand einlesen* auf der Seite *Altbestand* startet den Massenlauf:
 Tonregal liest dort nur und verändert nichts, bis man *Erledigtes aufräumen* bestätigt. Tags mit MusicBrainz-IDs gehen vor, der Fingerprint bestätigt;

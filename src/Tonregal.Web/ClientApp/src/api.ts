@@ -107,6 +107,26 @@ export interface ReleaseAlignResult {
   skipped: number
 }
 
+/** Änderungen aus dem Tag-Editor; fehlende Felder bleiben. Jahr oder Nummer 0 und ein leeres Genre entfernen den Wert. */
+export interface TagEdit {
+  title?: string
+  artists?: string[]
+  albumArtist?: string
+  album?: string
+  year?: number
+  genre?: string
+  number?: number
+  disc?: number
+}
+
+export interface TagEditResult {
+  /** Das Album, in dem die Tracks jetzt stehen; nach neuem Album oder Interpreten ein anderes. */
+  albumId: number | null
+  changed: number
+  moved: number
+  errors: string[]
+}
+
 export interface ScanProgress {
   processed: number
   total: number
@@ -498,6 +518,13 @@ export const api = {
   cleanLegacy: (jobIds: number[]) => request<LegacyCleanupResult>('POST', '/inbox/legacy/cleanup', { jobIds }),
   releaseCoverUrl: (releaseId: string) => `https://coverartarchive.org/release/${releaseId}/front-250`,
   fetchCover: (albumId: number) => request<void>('POST', `/library/albums/${albumId}/cover`),
+  editTrackTags: (trackId: number, edit: TagEdit) => request<TagEditResult>('PUT', `/library/tracks/${trackId}/tags`, edit),
+  editAlbumTags: (albumId: number, edit: TagEdit) => request<TagEditResult>('PUT', `/library/albums/${albumId}/tags`, edit),
+  uploadCover: (albumId: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<TagEditResult>('PUT', `/library/albums/${albumId}/cover`, form)
+  },
   alignRelease: (albumId: number) => request<ReleaseAlignResult>('POST', `/library/albums/${albumId}/align-release`),
   audioUrl: (fileId: number) => `/api/library/files/${fileId}/audio`,
   downloadUrl: (fileId: number) => `/api/library/files/${fileId}/download`,

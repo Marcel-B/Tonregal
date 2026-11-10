@@ -132,6 +132,40 @@ public sealed class LibraryScanner(
         return result;
     }
 
+    /// <summary>
+    /// Liest nur diese Dateien neu ein, egal ob Größe und Änderungszeit gleich blieben, z. B. nach dem Tag-Editor, der
+    /// ihre Pfade im Index schon nachgezogen hat. Der Aufrufer hält <see cref="LibraryScanLock"/>.
+    /// </summary>
+    public async Task RescanAsync(IReadOnlyCollection<string> relativePaths, CancellationToken ct)
+    {
+        var root = Path.GetFullPath(options.Value.Library);
+        await LoadCachesAsync(ct);
+        var paths = relativePaths.ToList();
+        var files = await db.AudioFiles.Include(f => f.Track).Where(f => paths.Contains(f.Path)).ToListAsync(ct);
+        foreach (var file in files)
+        {
+            var fullPath = Path.Combine(root, file.Path);
+            try
+            {
+                var info = new FileInfo(fullPath);
+                if (!info.Exists)
+                    continue;
+                var metadata = tagReader.Read(fullPath);
+                var hash = await HashAsync(fullPath, ct);
+                Apply(file, metadata, info, new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero), hash, fullPath, root);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                // Der nächste volle Scan versucht es wieder.
+                logger.LogWarning("Neu einlesen von {Path} fehlgeschlagen: {Message}", file.Path, e.Message);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        await RemoveOrphansAsync(db, ct, _successors.Where(s => s.Key.Id != 0 && s.Value.Id != 0)
+            .ToDictionary(s => s.Key.Id, s => s.Value.Id));
+    }
+
     private void Apply(AudioFile file, AudioFileInfo metadata, FileInfo info, DateTimeOffset modifiedAt, string hash, string fullPath, string root)
     {
         var (tags, props) = metadata;
@@ -281,14 +315,14 @@ public sealed class LibraryScanner(
             .Order(StringComparer.Ordinal);
     }
 
-    private static string? FindCover(string directory, string root) =>
+    internal static string? FindCover(string directory, string root) =>
         CoverFileNames
             .Select(name => Path.Combine(directory, name))
             .Where(File.Exists)
             .Select(path => ToRelative(root, path))
             .FirstOrDefault();
 
-    private static string ToRelative(string root, string fullPath) =>
+    internal static string ToRelative(string root, string fullPath) =>
         Path.GetRelativePath(root, fullPath).Replace(Path.DirectorySeparatorChar, '/');
 
     private static string DefaultSortName(string name) =>
