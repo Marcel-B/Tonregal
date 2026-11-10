@@ -12,6 +12,7 @@ import { useRatingsStore } from '@/stores/ratings'
 import LyricsPanel from './LyricsPanel.vue'
 import ShuffleIcon from './ShuffleIcon.vue'
 import AddToPlaylist from './AddToPlaylist.vue'
+import DancingFigure from './DancingFigure.vue'
 
 /**
  * Der Player über dem ganzen Bildschirm, nach dem Vorbild von Tonwerk-AI und dem großen Player der iPhone-App: das
@@ -40,6 +41,32 @@ function toggleLyrics() {
   showsLyrics.value = !showsLyrics.value
   try {
     localStorage.setItem(lyricsKey, String(showsLyrics.value))
+  } catch {
+    // privates Fenster o. ä.
+  }
+}
+
+/**
+ * Die tanzende Figur vor dem Cover, eine Spielerei zum Abschalten. Ohne Wahl an, außer das Gerät wünscht sich
+ * weniger Bewegung.
+ */
+const dancerKey = 'tonregal.showsDancer'
+const showsDancer = ref(readDancerSwitch())
+
+function readDancerSwitch(): boolean {
+  try {
+    const stored = localStorage.getItem(dancerKey)
+    if (stored !== null) return stored === 'true'
+  } catch {
+    // privates Fenster o. ä.
+  }
+  return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+}
+
+function toggleDancer() {
+  showsDancer.value = !showsDancer.value
+  try {
+    localStorage.setItem(dancerKey, String(showsDancer.value))
   } catch {
     // privates Fenster o. ä.
   }
@@ -172,6 +199,7 @@ onBeforeUnmount(() => {
         <div class="cover-box">
           <img v-if="cover && !coverMissing" :src="cover" alt="" class="cover" @load="coverLoaded" @error="coverMissing = true" />
           <div v-else class="cover cover-empty"><i class="pi pi-headphones" aria-hidden="true" /></div>
+          <DancingFigure v-if="showsDancer" :playing="player.playing" class="figure" />
         </div>
       </div>
       <div v-if="showsLyrics" class="lyrics-panel">
@@ -262,6 +290,17 @@ onBeforeUnmount(() => {
           :aria-pressed="showsLyrics"
           data-testid="now-playing-lyrics"
           @click="toggleLyrics"
+        />
+        <Button
+          icon="pi pi-user"
+          text
+          size="small"
+          :class="{ on: showsDancer }"
+          :aria-pressed="showsDancer"
+          aria-label="Tanzende Figur"
+          title="Tanzende Figur"
+          data-testid="now-playing-dancer"
+          @click="toggleDancer"
         />
         <Button icon="pi pi-list" label="Warteschlange" text size="small" @click="emit('queue')" />
         <AddToPlaylist :track-ids="[player.current.trackId]" label="Playlist" plain data-testid="now-playing-add" />
@@ -364,6 +403,7 @@ onBeforeUnmount(() => {
 
 /* So groß, wie Platz ist, quadratisch; pausiert etwas kleiner wie in der Musik-App. */
 .cover-box {
+  position: relative;
   width: min(100%, 28rem, 50vh);
   aspect-ratio: 1;
   transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -379,6 +419,16 @@ onBeforeUnmount(() => {
   border-radius: 0.75rem;
   object-fit: cover;
   box-shadow: 0 20px 60px rgb(0 0 0 / 0.5);
+}
+
+/* Steht vor der rechten unteren Ecke des Covers, etwas darüber hinaus, wie ein Aufsteller vor der Plattenhülle. */
+.figure {
+  position: absolute;
+  right: -8%;
+  bottom: -10%;
+  width: 60%;
+  height: 75%;
+  filter: drop-shadow(0 12px 18px rgb(0 0 0 / 0.55));
 }
 
 .cover-empty {

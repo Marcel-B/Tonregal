@@ -101,7 +101,11 @@ if (metrics)
 }
 app.UseExceptionHandler();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// Die tanzende Figur im großen Player ist ein glTF-Binary; die eingebaute Liste kennt die Endung nicht, und ohne
+// Eintrag liefe die Anfrage in den Fallback und bekäme index.html.
+var contentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+contentTypes.Mappings[".glb"] = "model/gltf-binary";
+app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = contentTypes });
 
 app.MapGroup("/api").MapTonregalApi().MapLibraryApi().MapMatchApi().MapInboxApi().MapDuplicatesApi().MapAnalysisApi().MapBackupApi().MapPlayerApi().MapIngestApi().MapSettingsApi().MapSmartPlaylistsApi().MapPlaylistsApi().MapListeningApi();
 app.MapHub<StatusHub>("/hub");
