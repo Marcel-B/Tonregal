@@ -4,7 +4,7 @@ Ein nativer Player für die Library auf oi-o-mat. Er spricht Tonregals API über
 über `/api/player/files/{id}/stream` (also Navidrome dahinter, mit Play-Counts) und spielt im Hintergrund weiter:
 Sperrbildschirm, Kontrollzentrum, AirPods, AirPlay, Unterbrechung durch Anrufe.
 
-Stand 0.1: Alben (zuletzt übernommene zuerst) und Interpreten mit Suche, Tab *Suche* über Titel, Alben und Interpreten
+Stand 0.3: Alben (zuletzt übernommene zuerst) und Interpreten mit Suche, Tab *Suche* über Titel, Alben und Interpreten
 (auf dem Server, ohne Rücksicht auf Akzente; ein Titel spielt mit den übrigen Treffern weiter), Albumseite mit BPM/Tonart, Abspielen und
 Zufällig, „Als Nächstes“ / „Hinten anhängen“ (Wischen oder langes Drücken), Warteschlange mit Verschieben und Löschen,
 die über App-Neustarts erhalten bleibt, Scrobble an Navidrome nach der Hälfte bzw. 4 Minuten, Songtext im großen Player
@@ -54,7 +54,8 @@ Einmalig:
 
 Jeder Merge auf main, der etwas unter `apple/` ändert, lädt danach von selbst einen neuen Build hoch; von Hand geht es über
 *Actions → TestFlight → Run workflow*. Der Workflow archiviert, signiert und lädt hoch (Build-Nummer 1000 plus die
-Laufnummer). Nach der Verarbeitung in App Store Connect unter *TestFlight* sich selbst als internen Tester eintragen und
+Laufnummer). Die Version kommt aus `MARKETING_VERSION` im Projekt; wer von Hand eine höhere angibt, hebt sie danach auch
+im Projekt an, sonst landen spätere automatische Builds unter der alten Version, und TestFlight bietet sie nicht an. Nach der Verarbeitung in App Store Connect unter *TestFlight* sich selbst als internen Tester eintragen und
 die App über die TestFlight-App installieren. Interne Builds brauchen keine Prüfung und laufen 90 Tage.
 
 Verschlüsselung (`ITSAppUsesNonExemptEncryption = NO`) und das Privacy-Manifest (`Tonregal/PrivacyInfo.xcprivacy`) sind
