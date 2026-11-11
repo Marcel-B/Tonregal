@@ -179,6 +179,24 @@ public static class LibraryApi
             return TypedResults.NoContent();
         });
 
+        // Tag-Editor: Änderungen landen in den Dateien; die Antwort nennt das Album, in dem die Tracks jetzt stehen.
+        library.MapPut("/tracks/{id:int}/tags", (int id, TagEdit edit, ITagEditor editor, CancellationToken ct) =>
+            EditAsync(() => editor.EditTrackAsync(id, edit, ct)));
+
+        library.MapPut("/albums/{id:int}/tags", (int id, TagEdit edit, ITagEditor editor, CancellationToken ct) =>
+            EditAsync(() => editor.EditAlbumAsync(id, edit, ct)));
+
+        // Eigenes Cover hochladen: cover.jpg/png im Albumordner und in jeder Datei.
+        library.MapPut("/albums/{id:int}/cover", async Task<IResult> (int id, IFormFile file, ITagEditor editor, CancellationToken ct) =>
+        {
+            if (file.Length is 0 or > MaxCoverBytes)
+                return TypedResults.Problem($"Das Cover muss zwischen 1 Byte und {MaxCoverBytes / 1024 / 1024} MB groß sein", statusCode: StatusCodes.Status400BadRequest);
+            using var buffer = new MemoryStream();
+            await file.CopyToAsync(buffer, ct);
+            return await EditAsync(() => editor.SetCoverAsync(id, new EmbeddedPicture(buffer.ToArray(), file.ContentType), ct));
+        })
+            .DisableAntiforgery();
+
         // Zum Vorhören; Range-Anfragen, damit der Browser springen kann.
         library.MapGet("/files/{id:int}/audio", async Task<IResult> (int id, TonregalDbContext db, IOptions<TonregalOptions> options, CancellationToken ct) =>
         {
@@ -243,6 +261,28 @@ public static class LibraryApi
         });
 
         return api;
+    }
+
+    private const long MaxCoverBytes = 20 * 1024 * 1024;
+
+    private static async Task<IResult> EditAsync(Func<Task<TagEditResult>> edit)
+    {
+        try
+        {
+            return TypedResults.Ok(await edit());
+        }
+        catch (KeyNotFoundException)
+        {
+            return TypedResults.NotFound();
+        }
+        catch (TagEditException e)
+        {
+            return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status400BadRequest);
+        }
+        catch (LibraryUnavailableException e)
+        {
+            return TypedResults.Problem(e.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
     }
 
     internal static string AudioContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch

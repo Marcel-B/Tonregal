@@ -16,4 +16,7 @@ public interface ILibraryScanner
 {
     /// <exception cref="LibraryUnavailableException">Mount-Marker fehlt.</exception>
     Task<ScanResult> ScanAsync(IProgress<ScanProgress>? progress, CancellationToken ct);
+
+    /// <summary>Liest nur diese Dateien (relativ zur Library) neu ein; der Aufrufer hält <see cref="LibraryScanLock"/>.</summary>
+    Task RescanAsync(IReadOnlyCollection<string> relativePaths, CancellationToken ct);
 }

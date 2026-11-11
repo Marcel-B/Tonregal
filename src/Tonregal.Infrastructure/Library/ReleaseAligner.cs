@@ -138,7 +138,7 @@ public sealed class ReleaseAligner(
     }
 
     /// <summary>Ein leerer alter Albumordner gibt sein Cover an den neuen ab und verschwindet.</summary>
-    private static void MoveLeftovers(string oldFolder, string newFolder, string root, string trash, DateTimeOffset now)
+    internal static void MoveLeftovers(string oldFolder, string newFolder, string root, string trash, DateTimeOffset now)
     {
         if (oldFolder == newFolder || !Directory.Exists(oldFolder)
             || Directory.EnumerateFiles(oldFolder).Any(f => TagLibTagReader.SupportedExtensions.Contains(Path.GetExtension(f)) && !Path.GetFileName(f).StartsWith('.')))

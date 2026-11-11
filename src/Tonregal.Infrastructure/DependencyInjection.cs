@@ -55,6 +55,8 @@ public static class DependencyInjection
         services.AddScoped<ILibraryAnalyzer, LibraryAnalyzer>();
         services.Configure<BackupOptions>(configuration.GetSection(BackupOptions.SectionName));
         services.AddSingleton<LibraryWriteLock>();
+        services.AddSingleton<LibraryScanLock>();
+        services.AddScoped<ITagEditor, TagEditor>();
         services.AddScoped<IBackupRunner, RcloneBackup>();
         services.Configure<NavidromeOptions>(configuration.GetSection(NavidromeOptions.SectionName));
         services.AddHttpClient<INavidromeClient, NavidromeClient>(client => client.Timeout = TimeSpan.FromSeconds(30));

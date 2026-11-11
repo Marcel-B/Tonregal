@@ -131,6 +131,70 @@ public sealed class TagLibTagWriter : ITagWriter
         file.Save();
     }
 
+    public void WriteChanges(string path, TagChanges changes)
+    {
+        using var file = Open(path);
+        if (file is TagLib.Mpeg.AudioFile or TagLib.Riff.File)
+            file.GetTag(TagTypes.Id3v2, true);
+
+        var tag = file.Tag;
+        if (changes.Title is { } title)
+            tag.Title = title;
+        if (changes.Artists is { } artists)
+        {
+            tag.Performers = [.. artists];
+            tag.PerformersSort = [];
+        }
+
+        if (changes.AlbumArtist is { } albumArtist)
+        {
+            tag.AlbumArtists = [albumArtist];
+            tag.AlbumArtistsSort = [];
+        }
+
+        if (changes.Album is { } album)
+            tag.Album = album;
+        if (changes.Year is { } year)
+            tag.Year = (uint)Math.Max(year, 0);
+        if (changes.Genre is { } genre)
+            tag.Genres = genre.Length == 0 ? [] : [genre];
+        if (changes.Track is { } number)
+            tag.Track = (uint)Math.Max(number, 0);
+        if (changes.Disc is { } disc)
+        {
+            tag.Disc = (uint)Math.Max(disc, 0);
+            if (tag.DiscCount < tag.Disc)
+                tag.DiscCount = tag.Disc;
+        }
+
+        if (changes.Compilation is { } compilation)
+            SetCompilation(file, compilation);
+        if (changes.DropRelease)
+        {
+            tag.MusicBrainzReleaseId = null;
+            tag.MusicBrainzReleaseGroupId = null;
+            tag.MusicBrainzReleaseArtistId = null;
+            tag.MusicBrainzReleaseType = null;
+            tag.MusicBrainzReleaseStatus = null;
+            tag.MusicBrainzReleaseCountry = null;
+            SetCustom(file, "MusicBrainz Release Track Id", "MUSICBRAINZ_RELEASETRACKID", "MusicBrainz Release Track Id", null);
+        }
+
+        file.Save();
+    }
+
+    public void ReplaceCover(string path, EmbeddedPicture cover)
+    {
+        using var file = Open(path);
+        if (file is TagLib.Mpeg.AudioFile or TagLib.Riff.File)
+            file.GetTag(TagTypes.Id3v2, true);
+        file.Tag.Pictures =
+        [
+            new Picture(new ByteVector(cover.Data)) { Type = PictureType.FrontCover, MimeType = cover.MimeType, Description = "Cover" },
+        ];
+        file.Save();
+    }
+
     private static File Open(string path)
     {
         try

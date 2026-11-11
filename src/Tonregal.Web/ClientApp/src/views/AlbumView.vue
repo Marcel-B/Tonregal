@@ -11,7 +11,10 @@ import AlbumCover from '@/components/AlbumCover.vue'
 import MatchDialog from '@/components/MatchDialog.vue'
 import ShuffleIcon from '@/components/ShuffleIcon.vue'
 import AddToPlaylist from '@/components/AddToPlaylist.vue'
-import { api, formatDuration, type AlbumDetail, type FileDto, type TrackDto } from '@/api'
+import TagEditDialog from '@/components/TagEditDialog.vue'
+import { useRouter } from 'vue-router'
+import { api, formatDuration, type AlbumDetail, type FileDto, type TagEditResult, type TrackDto } from '@/api'
+import { resultText } from '@/tagEdit'
 import { albumQueue, usePlayerStore } from '@/stores/player'
 import { useRatingsStore } from '@/stores/ratings'
 
@@ -84,6 +87,26 @@ const matchVisible = ref(false)
 const isCurrent = (track: TrackDto) => player.current?.trackId === track.id
 const trackItems = (track: TrackDto) => albumQueue(album.value!).filter((i) => i.trackId === track.id)
 
+const router = useRouter()
+const editTrack = ref<TrackDto | null>(null)
+const editVisible = ref(false)
+const editMessage = ref<string | null>(null)
+
+function openEdit(track: TrackDto | null) {
+  editTrack.value = track
+  editMessage.value = null
+  editVisible.value = true
+}
+
+/** Nach neuem Album oder Interpreten stehen die Tracks in einem anderen Album; dorthin wechseln. */
+async function edited(result: TagEditResult, coverChanged: boolean) {
+  editMessage.value = resultText(result.changed, result.moved)
+  if (coverChanged) coverVersion.value = Date.now()
+  if (result.albumId !== null && result.albumId !== props.id) await router.replace({ name: 'album', params: { id: result.albumId } })
+  else if (result.albumId === null) await router.replace({ name: 'library' })
+  else await load()
+}
+
 function openMatch(track: TrackDto) {
   matchTrack.value = track
   matchFile.value = track.files[0] ?? null
@@ -99,7 +122,7 @@ function openMatch(track: TrackDto) {
       <i class="pi pi-arrow-left text-xs" /> {{ album.albumArtist.name }}
     </RouterLink>
     <div class="flex flex-col sm:flex-row gap-6 mt-2 mb-6">
-      <div class="w-48 shrink-0"><AlbumCover :key="coverVersion" :album-id="album.id" :alt="album.title" /></div>
+      <div class="w-48 shrink-0"><AlbumCover :key="coverVersion" :album-id="album.id" :alt="album.title" :version="coverVersion" /></div>
       <div class="flex flex-col justify-end">
         <h1 class="text-2xl font-semibold">{{ album.title }}</h1>
         <div class="text-surface-500">
@@ -144,7 +167,18 @@ function openMatch(track: TrackDto) {
             title="Album als ZIP mit den Originaldateien und dem Cover"
             data-testid="download-album"
           />
+          <Button
+            label="Bearbeiten"
+            icon="pi pi-pencil"
+            size="small"
+            severity="secondary"
+            :disabled="!album.tracks.length"
+            title="Album, Interpret, Jahr, Genre und Cover ändern; die Änderung landet in den Dateien"
+            data-testid="edit-album"
+            @click="openEdit(null)"
+          />
         </div>
+        <div v-if="editMessage" class="mt-3 text-sm text-surface-500" data-testid="edit-message">{{ editMessage }}</div>
         <div v-if="album.canFetchCover" class="mt-3 flex items-center gap-3">
           <Button label="Cover suchen" icon="pi pi-image" severity="secondary" size="small" :loading="fetchingCover" data-testid="fetch-cover" @click="fetchCover" />
           <span v-if="coverError" class="text-sm text-red-500">{{ coverError }}</span>
@@ -210,7 +244,7 @@ function openMatch(track: TrackDto) {
           </div>
         </template>
       </Column>
-      <Column class="w-48">
+      <Column class="w-56">
         <template #body="{ data }">
           <Button
             icon="pi pi-play"
@@ -248,10 +282,22 @@ function openMatch(track: TrackDto) {
             :title="`Originaldatei herunterladen (${data.files[0].format.toUpperCase()})`"
             data-testid="download-track"
           />
+          <Button
+            icon="pi pi-pencil"
+            text
+            rounded
+            size="small"
+            aria-label="Bearbeiten"
+            title="Tags dieses Tracks bearbeiten"
+            :disabled="!data.files.length"
+            data-testid="edit-track"
+            @click="openEdit(data)"
+          />
           <Button icon="pi pi-search" text rounded size="small" aria-label="Abgleichen" title="Bei AcoustID/MusicBrainz abgleichen" @click="openMatch(data)" />
         </template>
       </Column>
     </DataTable>
     <MatchDialog v-model:visible="matchVisible" :track="matchTrack" :file="matchFile" />
+    <TagEditDialog v-model:visible="editVisible" :album="album" :track="editTrack" @saved="edited" />
   </template>
 </template>

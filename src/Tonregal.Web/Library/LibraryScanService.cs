@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.SignalR;
+using Tonregal.Application;
 using Tonregal.Application.Abstractions;
 using Tonregal.Infrastructure.Monitoring;
 using Tonregal.Web.Hubs;
@@ -19,6 +20,7 @@ public sealed record ScanStatus(
 public sealed class LibraryScanService(
     IServiceScopeFactory scopes,
     IHubContext<StatusHub> hub,
+    LibraryScanLock scanLock,
     TimeProvider time,
     ILogger<LibraryScanService> logger) : BackgroundService
 {
@@ -47,6 +49,8 @@ public sealed class LibraryScanService(
         var started = Stopwatch.GetTimestamp();
         try
         {
+            // Der Tag-Editor benennt Dateien um; dabei darf kein Scan dazwischen.
+            using var scanning = await scanLock.AcquireAsync("Scan", ct);
             await using var scope = scopes.CreateAsyncScope();
             var scanner = scope.ServiceProvider.GetRequiredService<ILibraryScanner>();
             var progress = new SyncProgress(p => _ = PublishAsync(_status with { Progress = p }, ct));
